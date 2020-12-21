@@ -1,0 +1,11 @@
+{% extends "index" %}
+
+{% block body %}
+    <h1>{{ article_id }}</h1>
+    <section class="content">
+        {{ content }}
+    </section>
+    <footer>
+        Last edited at {{ date }} by <a href="u/{{ author }}">{{ author }}</a>
+    </footer>
+{% endblock body %}

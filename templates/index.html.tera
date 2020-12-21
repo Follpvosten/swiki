@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+
+    <title>Alpakistan Wiki{% if article_id %} - {{ article_id }}{% endif %}</title>
+
+    <link rel="stylesheet" href="res/index.css">
+
+    {% block extra_head %}
+	{% endblock extra_head %}
+</head>
+
+<body>
+{% block body %}
+{% endblock body %}
+</body>
+
+</html>

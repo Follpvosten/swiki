@@ -1,0 +1,9 @@
+[default]
+port = 8080
+template_dir = "templates"
+
+[debug]
+address = "127.0.0.1"
+
+[release]
+address = "0.0.0.0"
