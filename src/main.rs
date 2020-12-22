@@ -8,22 +8,42 @@ pub use error::Error;
 type Result<T> = std::result::Result<T, Error>;
 
 // Route modules
-mod article;
+mod articles;
 
 #[rocket::main]
 async fn main() -> Result<()> {
     loop {
         let sled_db = sled::open("wiki.db")?;
         let db = database::Db::load_or_create(sled_db)?;
+        if db
+            .articles
+            .get_current_revision_id(&"Main".into())?
+            .is_none()
+        {
+            // Create a first page if we don't have one.
+            db.articles.add_revision(
+                &"Main".into(),
+                &"system".into(),
+                r#"Welcome to your new wiki!
+
+To edit this main page, go to [Main/edit].  
+You can look at past revisions at [Main/revs].  
+Have fun!
+"#,
+            )?;
+        }
         let res = rocket::ignite()
-            .mount("/", routes![article::get, article::edit])
+            .mount(
+                "/",
+                routes![articles::get, articles::edit, articles::revs, articles::rev],
+            )
             .mount("/res", StaticFiles::from("static"))
             .manage(db)
             .attach(Template::fairing())
             .launch()
             .await;
         if let Err(e) = res {
-            println!("Rocket crash: {:?}", e);
+            println!("Rocket crashed: {:?}", e);
             continue;
         }
         break;

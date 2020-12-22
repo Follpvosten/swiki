@@ -23,7 +23,7 @@ pub struct Revision {
     pub date: DateTime<Utc>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct RevisionMeta {
     pub author: Id,
     pub date: DateTime<Utc>,

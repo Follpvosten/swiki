@@ -6,6 +6,10 @@
         {{ content }}
     </section>
     <footer>
-        Last edited at {{ date }} by <a href="u/{{ author }}">{{ author }}</a>
+    {% if specific_rev %}
+        Revision {{ rev_id }}, created at {{ date }} by <a href="/u/{{ author }}">{{ author }}</a>
+    {% else %}
+        Last edited at {{ date }} by <a href="/u/{{ author }}">{{ author }}</a>
+    {% endif %}
     </footer>
 {% endblock body %}
