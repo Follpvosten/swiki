@@ -3,7 +3,7 @@
 {% block body %}
     <h1>{{ article_id }}</h1>
     <section class="content">
-        {{ content }}
+        {{ content | safe }}
     </section>
     <footer>
     {% if specific_rev %}

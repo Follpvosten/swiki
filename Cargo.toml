@@ -17,6 +17,7 @@ chrono = { version = "0.4", features = ["serde"] }
 rust-argon2 = "0.8"
 rand = "0.8"
 bincode = "1"
+pulldown-cmark = "0.8"
 
 [dependencies.rocket_contrib]
 git = "https://github.com/SergioBenitez/Rocket.git"

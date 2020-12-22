@@ -30,6 +30,11 @@ pub struct RevisionMeta {
 }
 
 impl Articles {
+    pub fn exists(&self, id: &Id) -> Result<bool> {
+        self.articleid_current_revision
+            .contains_key(&id)
+            .map_err(Error::from)
+    }
     /// Retrieves the list of revision ids for the given article id.
     /// Returns Ok(None) when the article doesn't exist.
     /// Returns RevisionMeta because loading the revision's content doesn't

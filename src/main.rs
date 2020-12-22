@@ -1,4 +1,3 @@
-use rocket::routes;
 use rocket_contrib::{serve::StaticFiles, templates::Template};
 
 mod database;
@@ -15,11 +14,7 @@ async fn main() -> Result<()> {
     loop {
         let sled_db = sled::open("wiki.db")?;
         let db = database::Db::load_or_create(sled_db)?;
-        if db
-            .articles
-            .get_current_revision_id(&"Main".into())?
-            .is_none()
-        {
+        if !db.articles.exists(&"Main".into())? {
             // Create a first page if we don't have one.
             db.articles.add_revision(
                 &"Main".into(),
@@ -28,15 +23,11 @@ async fn main() -> Result<()> {
 
 To edit this main page, go to [Main/edit].  
 You can look at past revisions at [Main/revs].  
-Have fun!
-"#,
+Have fun!"#,
             )?;
         }
         let res = rocket::ignite()
-            .mount(
-                "/",
-                routes![articles::get, articles::edit, articles::revs, articles::rev],
-            )
+            .mount("/", articles::routes())
             .mount("/res", StaticFiles::from("static"))
             .manage(db)
             .attach(Template::fairing())

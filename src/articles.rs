@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use rocket::{get, State};
+use pulldown_cmark::{html, BrokenLink, Options, Parser};
+use rocket::{get, Route, State};
 use rocket_contrib::{templates::Template, uuid::Uuid};
 
 use crate::{
@@ -11,9 +12,26 @@ use crate::{
     Result,
 };
 
+pub fn routes() -> Vec<Route> {
+    rocket::routes![get, edit, revs, rev]
+}
+
 fn render_404(article_id: &Id) -> Template {
     let context: HashMap<_, _> = std::iter::once(("article_id", article_id)).collect();
     Template::render("article_404", context)
+}
+
+fn markdown_to_html(input: &str) -> String {
+    let callback = &mut |broken_link: BrokenLink| {
+        Some((
+            ("/".to_string() + broken_link.reference).into(),
+            broken_link.reference.to_owned().into(),
+        ))
+    };
+    let parser = Parser::new_with_broken_link_callback(input, Options::all(), Some(callback));
+    let mut output = String::new();
+    html::push_html(&mut output, parser);
+    output
 }
 
 #[derive(serde::Serialize)]
@@ -37,7 +55,7 @@ pub fn get(db: State<Db>, article_id: Id) -> Result<Template> {
         let context = RevContext {
             article_id,
             rev_id,
-            content,
+            content: markdown_to_html(&content),
             author,
             date,
             specific_rev: false,
@@ -68,8 +86,14 @@ pub fn revs(db: State<Db>, article_id: Id) -> Result<Template> {
     }
 }
 
+// TODO: You can manually put in a rev_id from a different article and you'll
+// get that article instead of the current one, but with the wrong title. lol.
 #[get("/<article_id>/rev/<rev_id>")]
 pub fn rev(db: State<Db>, article_id: Id, rev_id: Uuid) -> Result<Template> {
+    // Make sure we return our correct 404 page.
+    if !db.articles.exists(&article_id)? {
+        return Ok(render_404(&article_id));
+    }
     let rev_id = rev_id.into_inner();
     let Revision {
         content,
@@ -79,7 +103,7 @@ pub fn rev(db: State<Db>, article_id: Id, rev_id: Uuid) -> Result<Template> {
     let context = RevContext {
         article_id,
         rev_id,
-        content,
+        content: markdown_to_html(&content),
         author,
         date,
         specific_rev: true,
