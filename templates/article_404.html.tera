@@ -1,10 +1,9 @@
 {% extends "index" %}
-
 {% block body %}
-    <h1>{{ article_id }}</h1>
+    <h1>{{ article_name }}</h1>
     <section class="content">
         This article doesn't exist yet. You can help extend Alpakistan Wiki by
-        <a href="{{ article_id }}/edit">adding it!</a>
+        <a href="{{ article_name }}/edit">adding it!</a>
     </section>
     <footer></footer>
 {% endblock body %}

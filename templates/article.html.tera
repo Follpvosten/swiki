@@ -1,15 +1,16 @@
 {% extends "index" %}
-
 {% block body %}
-    <h1>{{ article_id }}</h1>
+    <h1>{{ article_name }}</h1>
     <section class="content">
         {{ content | safe }}
     </section>
     <footer>
-    {% if specific_rev %}
-        Revision {{ rev_id }}, created at {{ date }} by <a href="/u/{{ author }}">{{ author }}</a>
-    {% else %}
-        Last edited at {{ date }} by <a href="/u/{{ author }}">{{ author }}</a>
-    {% endif %}
+        {% if specific_rev %}
+            Revision {{ rev_id }}, created at {{ date }} by
+            <a href="/u/{{ author }}">{{ author }}</a>
+        {% else %}
+            Last edited at {{ date }} by
+            <a href="/u/{{ author }}">{{ author }}</a>
+        {% endif %}
     </footer>
 {% endblock body %}

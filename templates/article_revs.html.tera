@@ -1,18 +1,18 @@
 {% extends "index" %}
-
 {% block body %}
-    <h1>{{ article_id }}</h1>
+    <h1>{{ article_name }}</h1>
     <section class="content">
         Revisions:
         <ul>
-        {% for rev in revs %}
-            <li>
-                <a href="/{{ article_id }}/rev/{{ rev.0 }}">
-                    {{ rev.0 }}
-                </a>
-                {{ rev.1.date }} by <a href="/u/{{ rev.1.author }}">{{ rev.1.author }}</a>
-            </li>
-        {% endfor %}
+            {% for rev in revs %}
+                <li>
+                    <a href="/{{ article_name }}/rev/{{ rev.0 }}">
+                        #{{ rev.0 }}
+                    </a>
+                    {{ rev.1.date }} by
+                    <a href="/u/{{ rev.2 }}">{{ rev.2 }}</a>
+                </li>
+            {% endfor %}
         </ul>
     </section>
     <footer></footer>

@@ -1,3 +1,4 @@
+use rocket::response::Redirect;
 use rocket_contrib::{serve::StaticFiles, templates::Template};
 
 mod database;
@@ -9,16 +10,27 @@ type Result<T> = std::result::Result<T, Error>;
 // Route modules
 mod articles;
 
+#[rocket::get("/")]
+fn index() -> Redirect {
+    Redirect::to("/Main")
+}
+
 #[rocket::main]
 async fn main() -> Result<()> {
     loop {
         let sled_db = sled::open("wiki.db")?;
         let db = database::Db::load_or_create(sled_db)?;
-        if !db.articles.exists(&"Main".into())? {
+        if db.articles.id_by_name("Main")?.is_none() {
+            let author_id = match db.get_userid_by_name("System")? {
+                Some(id) => id,
+                None => db.register_user("System", "todo lol")?,
+            };
             // Create a first page if we don't have one.
+            let article_id = db.articles.create("Main")?;
+
             db.articles.add_revision(
-                &"Main".into(),
-                &"system".into(),
+                article_id,
+                author_id,
                 r#"Welcome to your new wiki!
 
 To edit this main page, go to [Main/edit].  
@@ -27,6 +39,7 @@ Have fun!"#,
             )?;
         }
         let res = rocket::ignite()
+            .mount("/", rocket::routes![index])
             .mount("/", articles::routes())
             .mount("/res", StaticFiles::from("static"))
             .manage(db)
