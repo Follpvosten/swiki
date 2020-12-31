@@ -1,0 +1,12 @@
+{% extends "index" %}
+{% block body %}
+<section class="section">
+    <div class="container">
+        <h1 class="title">Success!</h1>
+        <p>
+            Your registration was successful. You can log <a href="/u/login">log in</a>
+            using the password you registered with.
+        </p>
+    </div>
+</section>
+{% endblock body %}

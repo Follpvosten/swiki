@@ -165,7 +165,7 @@ impl Articles {
         article_id: Id,
         author_id: Id,
         content: &str,
-    ) -> Result<(RevId, Revision)> {
+    ) -> Result<(RevId, RevisionMeta)> {
         let id = match self.get_current_revision(article_id)? {
             Some((rev_id, rev)) => {
                 if rev.content == content {
@@ -195,11 +195,7 @@ impl Articles {
             },
         )?;
 
-        let revision = Revision {
-            content: content.to_string(),
-            author_id,
-            date,
-        };
+        let revision = RevisionMeta { author_id, date };
         Ok((id, revision))
     }
 }

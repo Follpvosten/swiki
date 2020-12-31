@@ -1,18 +1,29 @@
 <!DOCTYPE html>
 <html>
-    <head>
-        <meta content="IE=edge" http-equiv="X-UA-Compatible"/>
-        <meta content="text/html; charset=utf-8" http-equiv="content-type"/>
-        <meta content="width=device-width, initial-scale=1.0, maximum-scale=1" name="viewport"/>
-        <title>
-            Alpakistan Wiki
-            {% if article_name %}
-                - {{ article_name }}
-            {% endif %}
-        </title>
-        <link href="/res/index.css" rel="stylesheet"/> {% block extra_head %}{% endblock extra_head %}
-        </head>
-        <body>
-            {% block body %}{% endblock body %}
-        </body>
-    </html>
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="IE=edge" http-equiv="X-UA-Compatible" />
+    <meta content="text/html; charset=utf-8" http-equiv="content-type" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>
+        {{ site_name }}
+        {%- if article_name -%}
+        - {{ article_name }}
+        {%- elif page_name -%}
+        - {{ page_name }}
+        {%- endif -%}
+    </title>
+    <link href="https://cdn.jsdelivr.net/npm/bulma@0.9.1/css/bulma.min.css" rel="stylesheet">
+    <link href="/res/index.css" rel="stylesheet">
+
+    {% block extra_head %}
+    {% endblock extra_head %}
+</head>
+
+<body>
+    {% block body %}
+    {% endblock body %}
+</body>
+
+</html>

@@ -1,6 +1,7 @@
 use std::convert::TryInto;
 
 use sled::{transaction::Transactional, Tree};
+use uuid::Uuid;
 
 use crate::Error;
 
@@ -15,6 +16,7 @@ pub struct Db {
     userid_username: Tree,
     userid_password: Tree,
     userid_email: Tree,
+    sessionid_userid: Tree,
     pub articles: Articles,
     inner: sled::Db,
 }
@@ -46,6 +48,7 @@ impl Db {
             userid_username: db.open_tree("userid_username")?,
             userid_password: db.open_tree("userid_password")?,
             userid_email: db.open_tree("userid_email")?,
+            sessionid_userid: db.open_tree("sessionid_userid")?,
             articles: Articles {
                 articleid_name: db.open_tree("articleid_name")?,
                 articlename_id: db.open_tree("articlename_id")?,
@@ -103,17 +106,24 @@ impl Db {
             .map(|ivec| String::from_utf8(ivec.to_vec()).unwrap()))
     }
 
-    pub fn verify_password(&self, username: &str, password: &str) -> crate::Result<bool> {
-        if let Some(id) = self.get_userid_by_name(username)? {
-            let hash = self
-                .userid_password
-                .get(id.to_bytes())?
-                .map(|ivec| String::from_utf8(ivec.to_vec()).unwrap())
-                .ok_or_else(|| Error::UserDataInconsistent(username.to_string()))?;
-            Ok(verify_password(&hash, password)?)
-        } else {
-            Err(Error::UserNotFound(username.to_string()))
-        }
+    pub fn verify_password(&self, user_id: Id, password: &str) -> crate::Result<bool> {
+        let hash = self
+            .userid_password
+            .get(user_id.to_bytes())?
+            .map(|ivec| String::from_utf8(ivec.to_vec()).unwrap())
+            .ok_or(Error::PasswordNotFound(user_id))?;
+        Ok(verify_password(&hash, password)?)
+    }
+
+    pub fn create_session(&self, user_id: Id) -> crate::Result<Uuid> {
+        let id = Uuid::new_v4();
+        self.sessionid_userid
+            .insert(id.as_bytes(), &user_id.to_bytes())?;
+        Ok(id)
+    }
+
+    pub fn username_exists(&self, username: &str) -> crate::Result<bool> {
+        Ok(self.username_userid.contains_key(username.as_bytes())?)
     }
 
     /// Call flush_async().await on the internal database to sync
@@ -126,7 +136,7 @@ impl Db {
 
 #[cfg(test)]
 mod tests {
-    use articles::rev_id::RevId;
+    use articles::{rev_id::RevId, Revision, RevisionMeta};
 
     use super::*;
     use std::ops::Not;
@@ -153,13 +163,13 @@ mod tests {
         // Make sure the user exists now
         assert!(db.get_user_name(user_id)?.is_some());
         // Verifying a correct password returns true
-        assert!(db.verify_password(username, password)?);
+        assert!(db.verify_password(user_id, password)?);
         // Verifying a wrong password returns false
-        assert!(db.verify_password(username, "password123")?.not());
+        assert!(db.verify_password(user_id, "password123")?.not());
         // Verifying an unknown user returns an error
         assert!(matches!(
-            db.verify_password("someone else", password),
-            Err(Error::UserNotFound(_))
+            db.verify_password(Id(255), password),
+            Err(Error::PasswordNotFound(_))
         ));
         Ok(())
     }
@@ -184,6 +194,12 @@ This is a **fun** Article with some minimal *Markdown* in it.
         );
         // Retrieve it manually, just to be sure
         let rev_from_db = db.articles.get_revision(rev_id)?;
+        let RevisionMeta { author_id, date } = rev;
+        let rev = Revision {
+            author_id,
+            date,
+            content: content.into(),
+        };
         assert_eq!(rev, rev_from_db);
 
         // Add another revision
@@ -203,6 +219,12 @@ Something [Link](Links) to something else. New content. Ha ha ha."#;
         // Verify the new rev id is different
         assert_ne!(rev_id, new_rev_id);
         // Verify the new revision is different
+        let RevisionMeta { author_id, date } = new_rev;
+        let new_rev = Revision {
+            author_id,
+            date,
+            content: new_content.to_string(),
+        };
         assert_ne!(rev, new_rev);
         Ok(())
     }

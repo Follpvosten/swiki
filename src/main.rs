@@ -1,7 +1,15 @@
-use rocket::response::Redirect;
+use rocket::{fairing::AdHoc, response::Redirect};
 use rocket_contrib::{serve::StaticFiles, templates::Template};
 
+mod cache;
+pub use cache::Cache;
 mod database;
+pub use database::Db;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct Config {
+    pub site_name: String,
+}
 
 mod error;
 pub use error::Error;
@@ -9,6 +17,7 @@ type Result<T> = std::result::Result<T, Error>;
 
 // Route modules
 mod articles;
+mod users;
 
 #[rocket::get("/")]
 fn index() -> Redirect {
@@ -41,9 +50,12 @@ Have fun!"#,
         let res = rocket::ignite()
             .mount("/", rocket::routes![index])
             .mount("/", articles::routes())
+            .mount("/u", users::routes())
             .mount("/res", StaticFiles::from("static"))
             .manage(db)
+            .manage(Cache::new()?)
             .attach(Template::fairing())
+            .attach(AdHoc::config::<Config>())
             .launch()
             .await;
         if let Err(e) = res {

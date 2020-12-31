@@ -1,6 +1,7 @@
 [default]
 port = 8080
 template_dir = "templates"
+site_name = "Alpakistan Wiki"
 
 [debug]
 address = "127.0.0.1"

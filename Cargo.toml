@@ -18,9 +18,14 @@ rust-argon2 = "0.8"
 rand = "0.8"
 bincode = "1"
 pulldown-cmark = "0.8"
-itertools = "0.9"
+itertools = "0.10"
+log = "0.4"
+captcha = "0.0.8"
+uuid = { version = "*", features = ["v4"] }
+zeroize = "1"
+base64 = "0.13"
 
 [dependencies.rocket_contrib]
 git = "https://github.com/SergioBenitez/Rocket.git"
 rev = "1f1f44f336e5a172361fc1860461bb03667b1ed2"
-features = ["tera_templates"]
+features = ["tera_templates", "uuid"]

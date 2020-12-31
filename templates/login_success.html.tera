@@ -1,0 +1,12 @@
+{% extends "index" %}
+{% block body %}
+<section class="section">
+    <div class="container">
+        <h1 class="title">Success!</h1>
+        <p>
+            Your have successfully logged in. You can now go to the <a href="/Main">Main Page</a>
+            and start exploring from there.
+        </p>
+    </div>
+</section>
+{% endblock body %}

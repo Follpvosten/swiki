@@ -5,9 +5,10 @@ use rocket::{
     response::{self, Responder},
     Request, Response,
 };
+use rocket_contrib::templates::tera;
 use sled::transaction::TransactionError;
 
-use crate::database::articles::rev_id::RevId;
+use crate::database::{articles::rev_id::RevId, Id};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -33,6 +34,16 @@ pub enum Error {
     RevisionDataInconsistent(RevId),
     #[error("User data inconsistent: user {0} exists, but has no password")]
     UserDataInconsistent(String),
+    #[error("User id {0:?} does not exist or doesn't have a password")]
+    PasswordNotFound(Id),
+    #[error("Error rendering template: {0}")]
+    TemplateError(#[from] tera::Error),
+    #[error("Captcha error; please retry!")]
+    CaptchaNotFound,
+    #[error("An unexpected error occured when trying to generate a captcha")]
+    CaptchaPngError,
+    #[error("Error trying to join a blocking task: {0}")]
+    TokioJoinError(#[from] rocket::tokio::task::JoinError),
 }
 
 // Unwrap more specific errors from transactions.
@@ -58,14 +69,18 @@ impl<'r> Responder<'r, 'static> for Error {
         use Error::*;
         let status = match &self {
             SledError(_)
+            | CaptchaPngError
             | Argon2Error(_)
             | BincodeError(_)
             | TransactionError(_)
             | InvalidIdData(_)
             | UserDataInconsistent(_)
-            | RevisionDataInconsistent(_) => Status::InternalServerError,
+            | RevisionDataInconsistent(_)
+            | TemplateError(_)
+            | TokioJoinError(_)
+            | PasswordNotFound(_) => Status::InternalServerError,
             UserAlreadyExists(_) | IdenticalNewRevision => Status::BadRequest,
-            UserNotFound(_) | RevisionUnknown(_) => Status::NotFound,
+            UserNotFound(_) | RevisionUnknown(_) | CaptchaNotFound => Status::NotFound,
         };
         let body = self.to_string();
         Ok(Response::build()
