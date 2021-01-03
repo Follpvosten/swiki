@@ -1,59 +1,59 @@
 {% extends "index" %}
 {% block body %}
 <section class="section">
-    <div class="container">
-        <h1 class="title">Register</h1>
-        <h2 class="subtitle is-6">
-            Already have an account? <a href="/u/login">Log in instead!</a>
-        </h2>
-        <form action="/u/register" method="POST">
-            <div class="field">
-                <label class="label" for="username">Username:</label>
-                <div class="control">
-                    <input value="{{ username }}" class="input{% if username_taken %} is-danger{% endif %}"
-                        id="username" name="username" type="text" />
-                </div>
-                {% if username_taken %}
-                <p class="help is-danger">This username is invalid or already taken!</p>
-                {% endif %}
-            </div>
-            <div class="field">
-                <label class="label" for="password">Password:</label>
-                <div class="control">
-                    <input class="input{% if pwds_dont_match %} is-danger{% endif %}" id="password" name="password"
-                        type="password" />
-                </div>
-            </div>
-            <div class="field">
-                <label class="label" for="pwd_confirm">Confirm password:</label>
-                <div class="control">
-                    <input class="input{% if pwds_dont_match %} is-danger{% endif %}" id="pwd_confirm"
-                        name="pwd_confirm" type="password" />
-                </div>
-                {% if pwds_dont_match %}
-                <p class="help is-danger">The given passwords were empty or did not match!</p>
-                {% endif %}
-            </div>
-            <div class="box">
-                <input name="captcha_id" type="hidden" value="{{ captcha_uuid }}" />
-                <img src="data:image/png;base64,{{ captcha_base64 }}" />
-            </div>
-            <div class="field">
-                <label class="label" for="captcha_solution">Please write what you see in the captcha:</label>
-                <div class="control">
-                    <input class="input{% if failed_captcha %} is-danger{% endif %}" id="captcha_solution"
-                        name="captcha_solution" type="text" />
-                </div>
-                {% if failed_captcha %}
-                <p class="help is-danger">Error, please try again!</p>
-                {% endif %}
-            </div>
-            <div class="field">
-                <div class="control">
-                    <input class="button" type="submit" value="Register" />
-                </div>
-            </div>
-        </form>
-    </div>
+  <div class="container">
+    <h1 class="title">Register</h1>
+    <h2 class="subtitle is-6">
+      Already have an account? <a href="/u/login">Log in instead!</a>
+    </h2>
+    <form action="/u/register" method="POST">
+      <div class="field">
+        <label class="label" for="username">Username:</label>
+        <div class="control">
+          <input value="{{ username }}" class="input{% if username_taken %} is-danger{% endif %}" id="username"
+            name="username" type="text" />
+        </div>
+        {% if username_taken %}
+        <p class="help is-danger">This username is invalid or already taken!</p>
+        {% endif %}
+      </div>
+      <div class="field">
+        <label class="label" for="password">Password:</label>
+        <div class="control">
+          <input class="input{% if pwds_dont_match %} is-danger{% endif %}" id="password" name="password"
+            type="password" />
+        </div>
+      </div>
+      <div class="field">
+        <label class="label" for="pwd_confirm">Confirm password:</label>
+        <div class="control">
+          <input class="input{% if pwds_dont_match %} is-danger{% endif %}" id="pwd_confirm" name="pwd_confirm"
+            type="password" />
+        </div>
+        {% if pwds_dont_match %}
+        <p class="help is-danger">The given passwords were empty or did not match!</p>
+        {% endif %}
+      </div>
+      <div class="box">
+        <input name="captcha_id" type="hidden" value="{{ captcha_uuid }}" />
+        <img src="data:image/png;base64,{{ captcha_base64 }}" />
+      </div>
+      <div class="field">
+        <label class="label" for="captcha_solution">Please write what you see in the captcha:</label>
+        <div class="control">
+          <input class="input{% if failed_captcha %} is-danger{% endif %}" id="captcha_solution" name="captcha_solution"
+            type="text" />
+        </div>
+        {% if failed_captcha %}
+        <p class="help is-danger">Error, please try again!</p>
+        {% endif %}
+      </div>
+      <div class="field">
+        <div class="control">
+          <input class="button" type="submit" value="Register" />
+        </div>
+      </div>
+    </form>
+  </div>
 </section>
 {% endblock body %}

@@ -1,39 +1,38 @@
 {% extends "index" %}
 {% block body %}
 <section class="section">
-    <div class="container">
-        <h1 class="title">Login</h1>
-        <h2 class="subtitle is-6">
-            Need an account? <a href="/u/login">Register one!</a>
-        </h2>
-        <form action="/u/login" method="POST">
-            <div class="field">
-                <label class="label" for="username">Username:</label>
-                <div class="control">
-                    <input value="{% if username %}{{ username }}{% endif %}"
-                        class="input{% if username_unknown %} is-warning{% endif %}" id="username" name="username"
-                        type="text" />
-                </div>
-                {% if username_unknown %}
-                <p class="help is-warning">Unknown user!</p>
-                {% endif %}
-            </div>
-            <div class="field">
-                <label class="label" for="password">Password:</label>
-                <div class="control">
-                    <input class="input{% if wrong_password %} is-danger{% endif %}" id="password" name="password"
-                        type="password" />
-                </div>
-                {% if wrong_password %}
-                <p class="help is-danger">The given password was wrong!</p>
-                {% endif %}
-            </div>
-            <div class="field">
-                <div class="control">
-                    <input class="button" type="submit" value="Login" onclick="this.classList.add('is-loading')" />
-                </div>
-            </div>
-        </form>
-    </div>
+  <div class="container">
+    <h1 class="title">Login</h1>
+    <h2 class="subtitle is-6">
+      Need an account? <a href="/u/register">Register one!</a>
+    </h2>
+    <form action="/u/login" method="POST">
+      <div class="field">
+        <label class="label" for="username">Username:</label>
+        <div class="control">
+          <input value="{% if username %}{{ username }}{% endif %}"
+            class="input{% if username_unknown %} is-warning{% endif %}" id="username" name="username" type="text" />
+        </div>
+        {% if username_unknown %}
+        <p class="help is-warning">Unknown user!</p>
+        {% endif %}
+      </div>
+      <div class="field">
+        <label class="label" for="password">Password:</label>
+        <div class="control">
+          <input class="input{% if wrong_password %} is-danger{% endif %}" id="password" name="password"
+            type="password" />
+        </div>
+        {% if wrong_password %}
+        <p class="help is-danger">The given password was wrong!</p>
+        {% endif %}
+      </div>
+      <div class="field">
+        <div class="control">
+          <input class="button" type="submit" value="Login" onclick="this.classList.add('is-loading')" />
+        </div>
+      </div>
+    </form>
+  </div>
 </section>
 {% endblock body %}

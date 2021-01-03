@@ -1,11 +1,12 @@
-use std::{array::TryFromSliceError, io::Cursor};
+use std::array::TryFromSliceError;
 
 use rocket::{
     http::Status,
+    outcome::Outcome,
     response::{self, Responder},
-    Request, Response,
+    Request,
 };
-use rocket_contrib::templates::tera;
+use rocket_contrib::templates::{tera, Template};
 use sled::transaction::TransactionError;
 
 use crate::database::{articles::rev_id::RevId, Id};
@@ -34,6 +35,8 @@ pub enum Error {
     RevisionDataInconsistent(RevId),
     #[error("User data inconsistent: user {0} exists, but has no password")]
     UserDataInconsistent(String),
+    #[error("Database returned inconsistent data: article id {0:?} doesn't exist")]
+    ArticleDataInconsistent(Id),
     #[error("User id {0:?} does not exist or doesn't have a password")]
     PasswordNotFound(Id),
     #[error("Error rendering template: {0}")]
@@ -44,6 +47,8 @@ pub enum Error {
     CaptchaPngError,
     #[error("Error trying to join a blocking task: {0}")]
     TokioJoinError(#[from] rocket::tokio::task::JoinError),
+    #[error("Internal rocket error: failed to get database")]
+    DatabaseRequestGuardFailed,
 }
 
 // Unwrap more specific errors from transactions.
@@ -64,28 +69,60 @@ impl From<TransactionError<()>> for Error {
     }
 }
 
-impl<'r> Responder<'r, 'static> for Error {
-    fn respond_to(self, _: &'r Request<'_>) -> response::Result<'static> {
+impl Error {
+    pub fn status(&self) -> Status {
         use Error::*;
-        let status = match &self {
+        match self {
             SledError(_)
             | CaptchaPngError
+            | DatabaseRequestGuardFailed
             | Argon2Error(_)
             | BincodeError(_)
             | TransactionError(_)
             | InvalidIdData(_)
             | UserDataInconsistent(_)
             | RevisionDataInconsistent(_)
+            | ArticleDataInconsistent(_)
             | TemplateError(_)
             | TokioJoinError(_)
             | PasswordNotFound(_) => Status::InternalServerError,
             UserAlreadyExists(_) | IdenticalNewRevision => Status::BadRequest,
             UserNotFound(_) | RevisionUnknown(_) | CaptchaNotFound => Status::NotFound,
+        }
+    }
+}
+
+// Ouch: I can't implement IntoOutcome for crate::Result<S>.
+// I also can't just impl crate::Result<S> and add such a method.
+// So I'll have to use a helper trait...
+pub trait IntoOutcomeHack<S> {
+    fn into_outcome_hack(self) -> Outcome<S, (Status, Error), ()>;
+}
+impl<S> IntoOutcomeHack<S> for crate::Result<S> {
+    fn into_outcome_hack(self) -> Outcome<S, (Status, Error), ()> {
+        match self {
+            Ok(val) => Outcome::Success(val),
+            Err(e) => Outcome::Failure((e.status(), e)),
+        }
+    }
+}
+
+impl<'r> Responder<'r, 'static> for Error {
+    fn respond_to(self, request: &'r Request<'_>) -> response::Result<'static> {
+        #[derive(serde::Serialize)]
+        struct ErrorContext<'a> {
+            site_name: &'a str,
+            status: String,
+            error: String,
+        }
+        let cfg: &crate::Config = request.managed_state().unwrap();
+        let status = self.status().to_string();
+        let error = self.to_string();
+        let context = ErrorContext {
+            site_name: &cfg.site_name,
+            status,
+            error,
         };
-        let body = self.to_string();
-        Ok(Response::build()
-            .status(status)
-            .sized_body(body.len(), Cursor::new(body))
-            .finalize())
+        Template::render("error", context).respond_to(request)
     }
 }

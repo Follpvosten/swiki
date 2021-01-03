@@ -80,13 +80,24 @@ impl Articles {
             })
             .collect()
     }
+    pub fn get_current_content(&self, article_id: Id) -> Result<Option<String>> {
+        Ok(self
+            .revid_content
+            .scan_prefix(article_id.to_bytes())
+            .last()
+            .transpose()?
+            .map(|(_, content)| String::from_utf8(content.to_vec()).unwrap()))
+    }
     /// Get the current revision for the given article id if it exists.
     pub fn get_current_revision(&self, article_id: Id) -> Result<Option<(RevId, Revision)>> {
-        let (rev_id, author_id) = match self.revid_author.scan_prefix(article_id.to_bytes()).last()
+        let (rev_id, author_id) = match self
+            .revid_author
+            .scan_prefix(article_id.to_bytes())
+            .last()
+            .transpose()?
         {
             None => return Ok(None),
-            Some(data) => {
-                let (revid_ivec, authorid_ivec) = data?;
+            Some((revid_ivec, authorid_ivec)) => {
                 let revid = RevId::from_bytes(&revid_ivec)?;
                 let authorid = authorid_ivec.as_ref().try_into()?;
                 (revid, authorid)

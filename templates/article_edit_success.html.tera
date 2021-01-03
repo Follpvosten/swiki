@@ -1,0 +1,25 @@
+{% extends "index" %}
+{% block extra_head %}
+<meta http-equiv="Refresh" content="5; url='/{{ article_name }}'" />
+{% endblock %}
+{% block body %}
+<section class="section">
+  <div class="container">
+    {# I don't know if I like this, I'd prefer `is not null` or something #}
+    {% if rev_id is number -%}
+    <h1 class="title">Success!</h1>
+    <p>
+      The new article version was saved as <a href="/{{ article_name }}/rev/{{ rev_id }}">Revision {{ rev_id }}</a>!
+    </p>
+    {% else -%}
+    <h1 class="title">Well...</h1>
+    <p>
+      You submitted no actual changes to the content, so it didn't change.
+    </p>
+    {% endif %}
+    <p>
+      You will be redirected back to <a href="/{{ article_name }}">{{ article_name }}</a> shortly.
+    </p>
+  </div>
+</section>
+{% endblock body %}

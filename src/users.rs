@@ -111,15 +111,16 @@ async fn register_form(
         captcha_id,
         captcha_solution,
     } = form.into_inner();
+    let captcha_id = captcha_id.into_inner();
 
     let (pwds_dont_match, username_taken, failed_captcha) = (
         password != pwd_confirm || password.is_empty(),
         db.username_exists(&username)? || username == "register" || username == "login",
-        !cache.validate_captcha(captcha_id.into_inner(), &captcha_solution)?,
+        !cache.validate_captcha(captcha_id, &captcha_solution)?,
     );
 
     // Remove/invalidate the used captcha in *any* case
-    cache.remove_captcha(captcha_id.into_inner())?;
+    cache.remove_captcha(captcha_id)?;
 
     if pwds_dont_match || username_taken || failed_captcha {
         let (id, base64) = gen_captcha_and_id(&*cache).await?;
@@ -206,7 +207,7 @@ fn login_form(
     }
 }
 
-#[get("/<_username>", rank = 2)]
+#[get("/<_username>", rank = 3)]
 fn profile(_db: State<Db>, _username: String) -> Result<Template> {
     todo!()
 }

@@ -1,5 +1,9 @@
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 
+use rocket::{
+    request::{FromRequest, Outcome},
+    try_outcome, Request,
+};
 use sled::{transaction::Transactional, Tree};
 use uuid::Uuid;
 
@@ -19,6 +23,44 @@ pub struct Db {
     sessionid_userid: Tree,
     pub articles: Articles,
     inner: sled::Db,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct UserSession {
+    pub session_id: Uuid,
+    pub user_id: Id,
+}
+
+#[rocket::async_trait]
+impl<'a, 'r> FromRequest<'a, 'r> for UserSession {
+    type Error = Error;
+
+    async fn from_request(request: &'a Request<'r>) -> Outcome<Self, Self::Error> {
+        use crate::error::IntoOutcomeHack;
+        use rocket::{outcome::IntoOutcome, State};
+        // Early return if we can't get a valid session id for whatever reason...
+        let session_id: Uuid = try_outcome!(request
+            .cookies()
+            .get("session_id")
+            .and_then(|cookie| base64::decode(cookie.value()).ok())
+            .and_then(|vec| uuid::Bytes::try_from(vec.as_slice()).ok())
+            .map(Uuid::from_bytes)
+            .or_forward(()));
+        // ...and also early return if we can't get a db handle...
+        let db: State<Db> = try_outcome!(request
+            .guard()
+            .await
+            .map_failure(|(status, _)| { (status, Error::DatabaseRequestGuardFailed) }));
+        // ...of course, also if querying the session returns an error...
+        let user_id: Option<Id> = try_outcome!(db.get_session_user(session_id).into_outcome_hack());
+        // ...and finally, if the session doesn't exist (returns None), also forward.
+        user_id
+            .map(|user_id| UserSession {
+                user_id,
+                session_id,
+            })
+            .or_forward(())
+    }
 }
 
 fn hash_password(password: &str) -> Result<String, argon2::Error> {
@@ -120,6 +162,13 @@ impl Db {
         self.sessionid_userid
             .insert(id.as_bytes(), &user_id.to_bytes())?;
         Ok(id)
+    }
+
+    pub fn get_session_user(&self, session_id: Uuid) -> crate::Result<Option<Id>> {
+        self.sessionid_userid
+            .get(session_id.as_bytes())?
+            .map(|ivec| Id::from_bytes(&ivec))
+            .transpose()
     }
 
     pub fn username_exists(&self, username: &str) -> crate::Result<bool> {

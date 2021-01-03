@@ -1,0 +1,21 @@
+{% extends "index" %}
+{% block body %}
+<section class="section">
+  <div class="container">
+    <h1 class="title">{{ article_name }}</h1>
+    <form action="/{{ article_name}}/edit" method="POST">
+      <div class="field">
+        <label class="label" for="content">Edit the article below:</label>
+        <div class="control">
+          <textarea id="content" name="content" class="textarea" placeholder="Content">{{ old_content }}</textarea>
+        </div>
+      </div>
+      <div class="field">
+        <div class="control">
+          <input class="button" type="submit" value="Save changes" onclick="this.classList.add('is-loading')" />
+        </div>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock body %}

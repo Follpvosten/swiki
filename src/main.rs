@@ -1,3 +1,5 @@
+#![recursion_limit = "512"]
+
 use rocket::{fairing::AdHoc, response::Redirect};
 use rocket_contrib::{serve::StaticFiles, templates::Template};
 
