@@ -22,29 +22,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "alpakistan-wiki"
-version = "0.1.0"
-dependencies = [
- "base64",
- "bincode",
- "captcha",
- "chrono",
- "itertools",
- "log",
- "pulldown-cmark",
- "rand 0.8.0",
- "rocket",
- "rocket_contrib",
- "rust-argon2",
- "serde",
- "serde_json",
- "sled",
- "thiserror",
- "uuid",
- "zeroize",
-]
-
-[[package]]
 name = "arrayref"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1855,6 +1832,29 @@ name = "stdweb-internal-runtime"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "213701ba3370744dcd1a12960caa4843b3d68b4d1c0a5d575e0d65b2ee9d16c0"
+
+[[package]]
+name = "swiki"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "bincode",
+ "captcha",
+ "chrono",
+ "itertools",
+ "log",
+ "pulldown-cmark",
+ "rand 0.8.0",
+ "rocket",
+ "rocket_contrib",
+ "rust-argon2",
+ "serde",
+ "serde_json",
+ "sled",
+ "thiserror",
+ "uuid",
+ "zeroize",
+]
 
 [[package]]
 name = "syn"

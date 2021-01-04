@@ -2,17 +2,49 @@
 {% block body %}
 <section class="section">
   <div class="container">
-    <h1 class="title">{{ article_name }}</h1>
+    <h1 class="title">
+      {% if main_page %}
+      Main Page
+      {% else %}
+      {{ article_name }}
+      {% endif %}
+    </h1>
+    <hr>
     <form action="/{{ article_name}}/edit" method="POST">
       <div class="field">
-        <label class="label" for="content">Edit the article below:</label>
+        <label class="label" for="title">Article title:</label>
+
+        {% if main_page or new_article %}
         <div class="control">
-          <textarea id="content" name="content" class="textarea" placeholder="Content">{{ old_content }}</textarea>
+          <input class="input" type="text" id="title" value="{{ article_name }}" disabled>
         </div>
+        <p class="help{% if invalid_name_change %} is-danger{% endif %}">
+          {% if main_page %}
+          The main page's
+          {% else %}
+          A new article's
+          {% endif %}
+          name cannot be changed.
+        </p>
+        {% else %}
+        <div class="control">
+          <input class="input" type="text" id="title" name="title" value="{{ article_name }}">
+        </div>
+        {% endif %}
       </div>
       <div class="field">
+        <label class="label" for="content">Article content:</label>
         <div class="control">
-          <input class="button" type="submit" value="Save changes" onclick="this.classList.add('is-loading')" />
+          <textarea id="content" name="content" class="textarea" placeholder="Content"
+            rows="16">{{ old_content }}</textarea>
+        </div>
+      </div>
+      <div class="field is-grouped">
+        <div class="control">
+          <button class="button" onclick="history.back()">Go back</button>
+        </div>
+        <div class="control">
+          <input class="button is-link" type="submit" value="Save changes" onclick="this.classList.add('is-loading')" />
         </div>
       </div>
     </form>

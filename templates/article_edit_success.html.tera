@@ -11,12 +11,17 @@
     <p>
       The new article version was saved as <a href="/{{ article_name }}/rev/{{ rev_id }}">Revision {{ rev_id }}</a>!
     </p>
+    {% elif new_name %}
+    <h1 class="title">Success!</h1>
+    <p>
+      The article's title was changed successfully.
+    </p>
     {% else -%}
     <h1 class="title">Well...</h1>
     <p>
       You submitted no actual changes to the content, so it didn't change.
     </p>
-    {% endif %}
+    {% endif -%}
     <p>
       You will be redirected back to <a href="/{{ article_name }}">{{ article_name }}</a> shortly.
     </p>

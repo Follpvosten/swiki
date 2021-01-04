@@ -29,13 +29,15 @@ pub enum Error {
     RevisionUnknown(RevId),
     #[error("New content is identical to the previous revision")]
     IdenticalNewRevision,
+    #[error("Error changing article name: Article {0} already exists")]
+    DuplicateArticleName(String),
     #[error("Tried to read a byte slice with the wrong length")]
     InvalidIdData(#[from] TryFromSliceError),
     #[error("Database is inconsistent: Revision {0:?} is missing fields")]
     RevisionDataInconsistent(RevId),
     #[error("User data inconsistent: user {0} exists, but has no password")]
     UserDataInconsistent(String),
-    #[error("Database returned inconsistent data: article id {0:?} doesn't exist")]
+    #[error("Database returned inconsistent data: article id {0:?} not found")]
     ArticleDataInconsistent(Id),
     #[error("User id {0:?} does not exist or doesn't have a password")]
     PasswordNotFound(Id),
@@ -86,7 +88,9 @@ impl Error {
             | TemplateError(_)
             | TokioJoinError(_)
             | PasswordNotFound(_) => Status::InternalServerError,
-            UserAlreadyExists(_) | IdenticalNewRevision => Status::BadRequest,
+            UserAlreadyExists(_) | IdenticalNewRevision | DuplicateArticleName(_) => {
+                Status::BadRequest
+            }
             UserNotFound(_) | RevisionUnknown(_) | CaptchaNotFound => Status::NotFound,
         }
     }

@@ -6,6 +6,7 @@
     <h2 class="subtitle is-6">
       Already have an account? <a href="/u/login">Log in instead!</a>
     </h2>
+    <hr>
     <form action="/u/register" method="POST">
       <div class="field">
         <label class="label" for="username">Username:</label>

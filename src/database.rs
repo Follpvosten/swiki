@@ -32,34 +32,58 @@ pub struct UserSession {
 }
 
 #[rocket::async_trait]
-impl<'a, 'r> FromRequest<'a, 'r> for UserSession {
+impl<'a, 'r> FromRequest<'a, 'r> for &'a UserSession {
+    type Error = Error;
+
+    async fn from_request(request: &'a Request<'r>) -> Outcome<Self, Self::Error> {
+        use rocket::outcome::IntoOutcome;
+        let result = request.local_cache(|| {
+            // Early return if we can't get a valid session id for whatever reason...
+            let session_id = request
+                .cookies()
+                .get("session_id")
+                .and_then(|cookie| base64::decode(cookie.value()).ok())
+                .and_then(|vec| uuid::Bytes::try_from(vec.as_slice()).ok())
+                .map(Uuid::from_bytes)?;
+            // ...and also early return if we can't get a db handle...
+            let db: &Db = request.managed_state()?;
+            // ...of course, also if querying the session returns an error...
+            let user_id: Option<Id> = match db.get_session_user(session_id) {
+                Err(e) => {
+                    log::error!("Error getting session user: {}", e);
+                    None
+                }
+                Ok(user_id) => Some(user_id),
+            }?;
+            // ...and finally, if the session doesn't exist (returns None), also forward.
+            user_id.map(|user_id| UserSession {
+                user_id,
+                session_id,
+            })
+        });
+
+        result.as_ref().or_forward(())
+    }
+}
+
+#[derive(serde::Serialize)]
+pub struct LoggedUserName(pub String);
+#[rocket::async_trait]
+impl<'a, 'r> FromRequest<'a, 'r> for LoggedUserName {
     type Error = Error;
 
     async fn from_request(request: &'a Request<'r>) -> Outcome<Self, Self::Error> {
         use crate::error::IntoOutcomeHack;
-        use rocket::{outcome::IntoOutcome, State};
-        // Early return if we can't get a valid session id for whatever reason...
-        let session_id: Uuid = try_outcome!(request
-            .cookies()
-            .get("session_id")
-            .and_then(|cookie| base64::decode(cookie.value()).ok())
-            .and_then(|vec| uuid::Bytes::try_from(vec.as_slice()).ok())
-            .map(Uuid::from_bytes)
-            .or_forward(()));
-        // ...and also early return if we can't get a db handle...
-        let db: State<Db> = try_outcome!(request
-            .guard()
-            .await
-            .map_failure(|(status, _)| { (status, Error::DatabaseRequestGuardFailed) }));
-        // ...of course, also if querying the session returns an error...
-        let user_id: Option<Id> = try_outcome!(db.get_session_user(session_id).into_outcome_hack());
-        // ...and finally, if the session doesn't exist (returns None), also forward.
-        user_id
-            .map(|user_id| UserSession {
-                user_id,
-                session_id,
-            })
-            .or_forward(())
+        use rocket::outcome::IntoOutcome;
+        // Get the logged user's data
+        let session: &UserSession = try_outcome!(request.guard().await);
+        // Get a handle on the db
+        let db: &Db = try_outcome!(request.managed_state().or_forward(()));
+        // Finally, get the user's name
+        let user_name: Option<String> =
+            try_outcome!(db.get_user_name(session.user_id).into_outcome_hack());
+        // Wrap it in a LoggedUserName and return it
+        user_name.map(LoggedUserName).or_forward(())
     }
 }
 
@@ -162,6 +186,11 @@ impl Db {
         self.sessionid_userid
             .insert(id.as_bytes(), &user_id.to_bytes())?;
         Ok(id)
+    }
+
+    pub fn destroy_session(&self, session_id: Uuid) -> crate::Result<()> {
+        self.sessionid_userid.remove(session_id.as_bytes())?;
+        Ok(())
     }
 
     pub fn get_session_user(&self, session_id: Uuid) -> crate::Result<Option<Id>> {

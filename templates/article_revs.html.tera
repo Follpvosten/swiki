@@ -2,7 +2,14 @@
 {% block body %}
 <section class="section">
   <div class="container">
-    <h1 class="title">{{ article_name }}</h1>
+    <h1 class="title">
+      {% if main_page %}
+      Main Page
+      {% else %}
+      {{ article_name }}
+      {% endif %}
+    </h1>
+    <hr>
     <section class="content">
       Revisions:
       <ul>

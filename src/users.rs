@@ -3,21 +3,32 @@ use rocket::{
     http::{Cookie, CookieJar},
     post,
     request::Form,
+    response::Redirect,
     FromForm, State,
 };
-use rocket_contrib::{templates::Template, uuid::Uuid as RocketUuid};
+use rocket_contrib::{
+    templates::{tera::Context, Template},
+    uuid::Uuid as RocketUuid,
+};
 use uuid::Uuid;
 use zeroize::Zeroize;
 
-use crate::{Cache, Config, Db, Error, Result};
+use crate::{
+    database::{LoggedUserName, UserSession},
+    Cache, Config, Db, Error, Result,
+};
 
 pub fn routes() -> Vec<rocket::Route> {
     rocket::routes![
         profile,
+        register_redirect,
         register_page,
         register_form,
+        login_redirect,
         login_page,
-        login_form
+        login_form,
+        logout,
+        logout_redirect,
     ]
 }
 
@@ -46,6 +57,7 @@ fn generate_captcha() -> Result<(String, String)> {
     Ok(result)
 }
 
+/// Generates a captcha on tokio's threadpool and stores it in the cache database.
 async fn gen_captcha_and_id(cache: &Cache) -> Result<(Uuid, String)> {
     let (solution, base64) = rocket::tokio::task::spawn_blocking(generate_captcha).await??;
     let id = Uuid::new_v4();
@@ -77,6 +89,10 @@ impl<'a> Default for RegisterPageContext<'a> {
     }
 }
 #[get("/register")]
+fn register_redirect(_session: &UserSession) -> Redirect {
+    Redirect::to("/Main")
+}
+#[get("/register", rank = 2)]
 async fn register_page(cfg: State<'_, Config>, cache: State<'_, Cache>) -> Result<Template> {
     // TODO handle already logged in state
     // Generate a captcha to include in the login form
@@ -142,11 +158,15 @@ async fn register_form(
     password.zeroize();
     // Make sure everything is stored on disk
     db.flush().await?;
-    // Return some success message
+    // Return some success messag
     Ok(Template::render("register_success", &*cfg))
 }
 
 #[get("/login")]
+fn login_redirect(_session: &UserSession) -> Redirect {
+    Redirect::to("/Main")
+}
+#[get("/login", rank = 2)]
 fn login_page(cfg: State<Config>) -> Template {
     // TODO handle already logged in state
     Template::render("login", &*cfg)
@@ -157,11 +177,11 @@ struct LoginRequest {
     password: String,
 }
 #[post("/login", data = "<form>")]
-fn login_form(
-    cfg: State<Config>,
-    db: State<Db>,
+async fn login_form(
+    cfg: State<'_, Config>,
+    db: State<'_, Db>,
     form: Form<LoginRequest>,
-    cookies: &CookieJar,
+    cookies: &CookieJar<'_>,
 ) -> Result<Template> {
     #[derive(serde::Serialize)]
     struct LoginPageContext<'a> {
@@ -201,13 +221,45 @@ fn login_form(
         password.zeroize();
         // Everything went well?? Wuuuuut
         let id = db.create_session(user_id)?;
+        db.flush().await?;
         cookies.add(Cookie::build("session_id", base64::encode(id.as_bytes())).finish());
         // TODO: Do we also auto-login on registrations?
-        Ok(Template::render("login_success", &*cfg))
+        let mut context = Context::new();
+        context.insert("site_name", &cfg.site_name);
+        // Just realized that this is a hack: A field "username" in the
+        // context is only used by the "login" template, while user_name
+        // would cause the top bar to wrongly show a logged-in user.
+        context.insert("user_name", &username);
+        Ok(Template::render("login_success", context.into_json()))
     }
 }
 
+#[get("/logout")]
+async fn logout(
+    cfg: State<'_, Config>,
+    db: State<'_, Db>,
+    cookies: &CookieJar<'_>,
+    session: &UserSession,
+) -> Result<Template> {
+    // Remove the session, both from the db and from the client's cookies
+    cookies.remove(Cookie::named("session_id"));
+    db.destroy_session(session.session_id)?;
+    db.flush().await?;
+    Ok(Template::render("logout_success", &*cfg))
+}
+
+#[get("/logout", rank = 2)]
+fn logout_redirect(cookies: &CookieJar<'_>) -> Redirect {
+    // Just make sure there's no session without caring about anything else
+    cookies.remove(Cookie::named("session_id"));
+    Redirect::to("/Main")
+}
+
 #[get("/<_username>", rank = 3)]
-fn profile(_db: State<Db>, _username: String) -> Result<Template> {
+fn profile(
+    _db: State<Db>,
+    _username: String,
+    _user_name: Option<LoggedUserName>,
+) -> Result<Template> {
     todo!()
 }

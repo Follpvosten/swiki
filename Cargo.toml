@@ -1,5 +1,5 @@
 [package]
-name = "alpakistan-wiki"
+name = "swiki"
 version = "0.1.0"
 authors = ["Follpvosten <wolfi@karpador.xyz>"]
 edition = "2018"

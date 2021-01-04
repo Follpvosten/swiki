@@ -8,20 +8,70 @@
   <meta content="width=device-width, initial-scale=1.0" name="viewport" />
   <title>
     {{ site_name }}
-    {%- if article_name -%}
+    {%- if article_name and not main_page %}
     - {{ article_name }}
-    {%- elif page_name -%}
+    {%- elif page_name %}
     - {{ page_name }}
     {%- endif -%}
   </title>
   <link href="https://cdn.jsdelivr.net/npm/bulma@0.9.1/css/bulma.min.css" rel="stylesheet">
+  <link href="https://use.fontawesome.com/releases/v5.14.0/css/all.css" rel="stylesheet">
   <link href="/res/index.css" rel="stylesheet">
 
   {% block extra_head %}
   {% endblock extra_head %}
 </head>
 
-<body>
+<body class="has-navbar-fixed-top">
+  <nav class="navbar is-link is-fixed-top">
+    <div class="navbar-brand">
+      <a class="navbar-item" href="/Main">
+        <strong>{{ site_name }}</strong>
+      </a>
+    </div>
+    <div class="navbar-menu">
+      <div class="navbar-end">
+        {# Search section #}
+        <div class="navbar-item">
+          <form action="/search">
+            <div class="field has-addons">
+              <div class="control">
+                <input class="input" type="text" name="q" placeholder="Search">
+              </div>
+              <div class="control">
+                <button class="button is-info" type="submit">
+                  <span class="icon is-small">
+                    <i class="fas fa-search"></i>
+                  </span>
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+        {# Login/Logout section #}
+        {% if user_name %}
+        <a class="navbar-item" href="u/{{ user_name }}">
+          <span class="icon">
+            <i class="fas fa-user-circle"></i>
+          </span>
+          <span>{{ user_name }}</span>
+        </a>
+        <a class="navbar-item" href="/u/logout">
+          <span class="icon">
+            <i class="fas fa-sign-out-alt"></i>
+          </span>
+        </a>
+        {% else %}
+        <a class="navbar-item" href="/u/login">
+          <span>Login</span>
+          <span class="icon">
+            <i class="fas fa-sign-in-alt"></i>
+          </span>
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </nav>
   {% block body %}
   {% endblock body %}
 </body>

@@ -43,6 +43,12 @@ impl Articles {
             .map(|ivec| ivec.as_ref().try_into())
             .transpose()
     }
+    pub fn name_by_id(&self, id: Id) -> Result<Option<String>> {
+        Ok(self
+            .articleid_name
+            .get(&id.to_bytes())?
+            .map(|ivec| String::from_utf8(ivec.to_vec()).unwrap()))
+    }
     /// Retrieves the list of revision ids for the given article id.
     /// Returns Ok(None) when the article doesn't exist.
     /// Returns RevisionMeta because loading the revision's content doesn't
@@ -168,6 +174,22 @@ impl Articles {
             ConflictableTransactionResult::<_, ()>::Ok(())
         })?;
         Ok(id)
+    }
+    pub fn change_name(&self, article_id: Id, new_name: &str) -> Result<()> {
+        // Article names must be unique
+        if self.articlename_id.contains_key(new_name.as_bytes())? {
+            return Err(Error::DuplicateArticleName(new_name.into()));
+        }
+        let old_name = self
+            .name_by_id(article_id)?
+            .ok_or(Error::ArticleDataInconsistent(article_id))?;
+        (&self.articleid_name, &self.articlename_id).transaction(|(id_name, name_id)| {
+            id_name.insert(&article_id.to_bytes(), new_name.as_bytes())?;
+            name_id.remove(old_name.as_bytes())?;
+            name_id.insert(new_name.as_bytes(), &article_id.to_bytes())?;
+            ConflictableTransactionResult::<_, ()>::Ok(())
+        })?;
+        Ok(())
     }
     /// Add a new revision. Uses the current date and time as the date.
     /// The core part of this type as it touches *all* of its trees.

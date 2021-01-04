@@ -2,11 +2,32 @@
 {% block body %}
 <section class="section">
   <div class="container">
-    <h1 class="title">{{ article_name }}</h1>
+    <nav class="level">
+      <div class="level-left">
+        <div class="level-item">
+          <h1 class="title">
+            {% if main_page %}
+            {{ site_name }}
+            {% else %}
+            {{ article_name }}
+            {% endif %}
+          </h1>
+        </div>
+      </div>
+      <div class="level-right">
+        <div class="level-item">
+          <div class="buttons has-addons">
+            <a class="button" href="/{{ article_name }}/edit">Edit</a>
+            <a class="button" href="/{{ article_name }}/revs">History</a>
+          </div>
+        </div>
+      </div>
+    </nav>
+    <hr>
     <section class="content">
       {{ content | safe }}
     </section>
-    <footer>
+    <footer class="footer">
       {% if specific_rev %}
       Revision {{ rev_id }}, created at {{ date }} by
       <a href="/u/{{ author }}">{{ author }}</a>
