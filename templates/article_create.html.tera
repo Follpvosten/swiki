@@ -1,0 +1,37 @@
+{% extends "index" %}
+{% block body %}
+<section class="section">
+  <div class="container">
+    <h1 class="title">Create a new article</h1>
+    <hr>
+    <div class="content">
+      <p>
+        Creating a new article is easy. Just search for the name you want; at the
+        top of the list of search results, there will be a paragraph saying
+        "An article named (your name here) doesn't exist yet". Click on "creating it!"
+        to start!
+      </p>
+      <p>
+        For your convenience, you can enter a name right here:
+      </p>
+    </div>
+
+    <form action="/search">
+      <div class="field has-addons">
+        <div class="control">
+          <input class="input" id="search" name="q" placeholder="Article name">
+        </div>
+        <div class="control">
+          <button class="button is-info" type="submit">
+            <span>Search</span>
+            <span class="icon is-small">
+              <i class="fas fa-search"></i>
+            </span>
+          </button>
+        </div>
+      </div>
+    </form>
+
+  </div>
+</section>
+{% endblock body %}

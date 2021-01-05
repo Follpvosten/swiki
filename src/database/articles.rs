@@ -1,6 +1,7 @@
 use std::convert::TryInto;
 
 use chrono::{DateTime, Utc};
+use itertools::Itertools;
 use serde::Serialize;
 use sled::{
     transaction::{ConflictableTransactionResult, Transactional},
@@ -48,6 +49,19 @@ impl Articles {
             .articleid_name
             .get(&id.to_bytes())?
             .map(|ivec| String::from_utf8(ivec.to_vec()).unwrap()))
+    }
+    pub fn name_exists(&self, name: &str) -> Result<bool> {
+        Ok(self.articlename_id.contains_key(name.as_bytes())?)
+    }
+    pub fn list_articles(&self) -> Result<Vec<Id>> {
+        self.articleid_name
+            .iter()
+            .map_ok(|(id_ivec, _)| id_ivec)
+            .map(|res| {
+                res.map_err(Error::from)
+                    .and_then(|ivec| ivec.as_ref().try_into())
+            })
+            .collect()
     }
     /// Retrieves the list of revision ids for the given article id.
     /// Returns Ok(None) when the article doesn't exist.

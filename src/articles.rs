@@ -1,17 +1,21 @@
+use chrono::Utc;
 use pulldown_cmark::{html, BrokenLink, Options, Parser};
 use rocket::{get, post, request::Form, response::Redirect, FromForm, Route, State};
-use rocket_contrib::templates::Template;
+use rocket_contrib::templates::{tera::Context, Template};
 
 use crate::{
     database::{
         articles::{Revision, RevisionMeta},
         Db, Id, LoggedUserName, UserSession,
     },
-    Config, Error, Result,
+    search::SearchResult,
+    ArticleIndex, Config, Error, Result,
 };
 
 pub fn routes() -> Vec<Route> {
     rocket::routes![
+        search,
+        create,
         get,
         edit_page,
         edit_form,
@@ -27,7 +31,6 @@ fn render_404(
     article_name: &str,
     user_name: &Option<LoggedUserName>,
 ) -> Result<Template> {
-    use rocket_contrib::templates::tera::Context;
     let mut context = Context::from_serialize(cfg)?;
     context.insert("article_name", article_name);
     if let Some(user_name) = user_name.as_ref() {
@@ -60,6 +63,44 @@ struct RevContext<'a> {
     date: chrono::DateTime<chrono::Utc>,
     specific_rev: bool,
     main_page: bool,
+}
+
+#[get("/search?<q>", rank = -20)]
+fn search(
+    db: State<Db>,
+    cfg: State<Config>,
+    index: State<ArticleIndex>,
+    user_name: Option<LoggedUserName>,
+    q: String,
+) -> Result<Template> {
+    #[derive(serde::Serialize)]
+    struct SearchResultsContext<'a> {
+        site_name: &'a str,
+        user_name: Option<LoggedUserName>,
+        results: Vec<SearchResult>,
+        query: String,
+        exact_match: bool,
+    }
+    let results = index.search_by_text(&q)?;
+    let exact_match = db.articles.name_exists(&q)?;
+    let context = SearchResultsContext {
+        site_name: &cfg.site_name,
+        user_name,
+        results,
+        query: q,
+        exact_match,
+    };
+    Ok(Template::render("search", context))
+}
+
+#[get("/create", rank = -20)]
+fn create(cfg: State<Config>, user_name: Option<LoggedUserName>) -> Template {
+    let mut context = Context::new();
+    context.insert("site_name", &cfg.site_name);
+    if let Some(user_name) = user_name {
+        context.insert("user_name", &user_name.0);
+    }
+    Template::render("article_create", context.into_json())
 }
 
 #[get("/<article_name>")]
@@ -154,6 +195,7 @@ struct AddRevRequest {
 async fn edit_form(
     db: State<'_, Db>,
     cfg: State<'_, Config>,
+    search_index: State<'_, ArticleIndex>,
     article_name: String,
     form: Form<AddRevRequest>,
     session: &UserSession,
@@ -210,7 +252,7 @@ async fn edit_form(
     let mut context = EditSuccessContext {
         site_name: &cfg.site_name,
         main_page: article_name == "Main",
-        article_name: new_title.unwrap_or(article_name),
+        article_name: new_title.unwrap_or_else(|| article_name.clone()),
         user_name,
         rev_id: None,
         new_name,
@@ -220,10 +262,36 @@ async fn edit_form(
         // This is the case where we early return a success. Huh.
         // This is because we technically succeeded since the article
         // looks like the user wants it to.
+
+        if new_name {
+            // We still need to update the article's name with the content.
+            // TODO do we really want to return on error here?
+            search_index.rename_article(
+                &article_name,
+                &context.article_name,
+                &new_content,
+                Utc::now(),
+            )?;
+        }
         Ok(Template::render("article_edit_success", context))
     } else {
-        context.rev_id = Some(res?.0.rev_id());
+        let (rev_id, rev) = res?;
+        context.rev_id = Some(rev_id.rev_id());
         db.flush().await?;
+        if new_name {
+            // Rename the article in the search index, replacing it
+            // TODO do we really want to return on error here?
+            search_index.rename_article(
+                &article_name,
+                &context.article_name,
+                &new_content,
+                rev.date,
+            )?;
+        } else {
+            // The name didn't change, so just update the content and the date
+            // TODO do we really want to return on error here?
+            search_index.update_article(&article_name, &new_content, rev.date)?;
+        }
         Ok(Template::render("article_edit_success", context))
     }
 }

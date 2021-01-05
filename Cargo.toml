@@ -24,6 +24,7 @@ captcha = "0.0.8"
 uuid = { version = "*", features = ["v4"] }
 zeroize = "1"
 base64 = "0.13"
+tantivy = "0.13"
 
 [dependencies.rocket_contrib]
 git = "https://github.com/SergioBenitez/Rocket.git"

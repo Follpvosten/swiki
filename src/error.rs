@@ -8,6 +8,7 @@ use rocket::{
 };
 use rocket_contrib::templates::{tera, Template};
 use sled::transaction::TransactionError;
+use tantivy::{query::QueryParserError, TantivyError};
 
 use crate::database::{articles::rev_id::RevId, Id};
 
@@ -51,6 +52,21 @@ pub enum Error {
     TokioJoinError(#[from] rocket::tokio::task::JoinError),
     #[error("Internal rocket error: failed to get database")]
     DatabaseRequestGuardFailed,
+    #[error("Error updating search index: {0}")]
+    TantivyError(TantivyError),
+    #[error("Error parsing search query: {0}")]
+    QueryParserError(QueryParserError),
+}
+
+impl From<TantivyError> for Error {
+    fn from(err: TantivyError) -> Self {
+        Error::TantivyError(err)
+    }
+}
+impl From<QueryParserError> for Error {
+    fn from(err: QueryParserError) -> Self {
+        Error::QueryParserError(err)
+    }
 }
 
 // Unwrap more specific errors from transactions.
@@ -87,7 +103,9 @@ impl Error {
             | ArticleDataInconsistent(_)
             | TemplateError(_)
             | TokioJoinError(_)
-            | PasswordNotFound(_) => Status::InternalServerError,
+            | PasswordNotFound(_)
+            | TantivyError(_)
+            | QueryParserError(_) => Status::InternalServerError,
             UserAlreadyExists(_) | IdenticalNewRevision | DuplicateArticleName(_) => {
                 Status::BadRequest
             }

@@ -1,0 +1,30 @@
+{% extends "index" %}
+{% block body %}
+<section class="section">
+  <div class="container">
+    <h1 class="title">Search results for '{{ query }}'</h1>
+    {% if not exact_match %}
+    <p>
+      An article named '{{ query }}' doesn't exist yet. You can help extend
+      {{ site_name }} by <a href="/{{ query }}/edit">creating it!</a>
+    </p>
+    {% endif %}
+    <hr>
+    {% for res in results %}
+    <div class="box">
+      <h2 class="title is-5">
+        <a href="/{{ res.title }}">
+          {{ res.title }}
+        </a>
+      </h2>
+      <h3 class="subtitle is-6">
+        Last edited {{ res.last_edited }}
+      </h3>
+      <div class="content">
+        {{ res.snippet | safe }}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock body %}

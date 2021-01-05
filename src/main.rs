@@ -7,6 +7,8 @@ mod cache;
 pub use cache::Cache;
 mod database;
 pub use database::Db;
+mod search;
+pub use search::ArticleIndex;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Config {
@@ -54,8 +56,9 @@ Have fun!"#,
             .mount("/", articles::routes())
             .mount("/u", users::routes())
             .mount("/res", StaticFiles::from("static"))
-            .manage(db)
+            .manage(ArticleIndex::new(&db)?)
             .manage(Cache::new()?)
+            .manage(db)
             .attach(Template::fairing())
             .attach(AdHoc::config::<Config>())
             .launch()

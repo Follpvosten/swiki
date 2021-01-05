@@ -1,0 +1,11 @@
+{% extends "index" %}
+{% block body %}
+<section class="section">
+  <div class="container">
+    <h1 class="title">{{ status }}</h1>
+    <p>
+      An unexpected error occured: {{ error }}
+    </p>
+  </div>
+</section>
+{% endblock body %}
