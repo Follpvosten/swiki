@@ -46,7 +46,13 @@ fn markdown_to_html(input: &str) -> String {
             broken_link.reference.to_owned().into(),
         ))
     };
-    let parser = Parser::new_with_broken_link_callback(input, Options::all(), Some(callback));
+    let parser =
+        Parser::new_with_broken_link_callback(input, Options::all(), Some(callback)).map(|ev| {
+            match ev {
+                pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
+                _ => ev,
+            }
+        });
     let mut output = String::new();
     html::push_html(&mut output, parser);
     output
