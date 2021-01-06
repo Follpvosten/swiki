@@ -14,7 +14,7 @@ use uuid::Uuid;
 use zeroize::Zeroize;
 
 use crate::{
-    database::{LoggedUserName, UserSession},
+    database::users::{LoggedUserName, UserSession},
     Cache, Config, Db, Error, Result,
 };
 
@@ -131,7 +131,7 @@ async fn register_form(
 
     let (pwds_dont_match, username_taken, failed_captcha) = (
         password != pwd_confirm || password.is_empty(),
-        db.username_exists(&username)? || username == "register" || username == "login",
+        db.users.name_exists(&username)? || username == "register" || username == "login",
         !cache.validate_captcha(captcha_id, &captcha_solution)?,
     );
 
@@ -153,7 +153,7 @@ async fn register_form(
     }
     // If we're here, registration is successful
     // Register the user
-    db.register_user(&username, &password)?;
+    db.users.register(&username, &password)?;
     // Remove the password from RAM
     password.zeroize();
     // Make sure everything is stored on disk
@@ -195,7 +195,7 @@ async fn login_form(
         mut password,
     } = form.into_inner();
 
-    let user_id = if let Some(id) = db.get_userid_by_name(&username)? {
+    let user_id = if let Some(id) = db.users.id_by_name(&username)? {
         id
     } else {
         password.zeroize();
@@ -208,7 +208,7 @@ async fn login_form(
         return Ok(Template::render("login", context));
     };
 
-    if !db.verify_password(user_id, &password)? {
+    if !db.users.verify_password(user_id, &password)? {
         password.zeroize();
         let context = LoginPageContext {
             site_name: &cfg.site_name,
@@ -220,7 +220,7 @@ async fn login_form(
     } else {
         password.zeroize();
         // Everything went well?? Wuuuuut
-        let id = db.create_session(user_id)?;
+        let id = db.users.create_session(user_id)?;
         db.flush().await?;
         cookies.add(Cookie::build("session_id", base64::encode(id.as_bytes())).finish());
         // TODO: Do we also auto-login on registrations?
@@ -243,7 +243,7 @@ async fn logout(
 ) -> Result<Template> {
     // Remove the session, both from the db and from the client's cookies
     cookies.remove(Cookie::named("session_id"));
-    db.destroy_session(session.session_id)?;
+    db.users.destroy_session(session.session_id)?;
     db.flush().await?;
     Ok(Template::render("logout_success", &*cfg))
 }

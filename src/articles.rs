@@ -6,7 +6,8 @@ use rocket_contrib::templates::{tera::Context, Template};
 use crate::{
     database::{
         articles::{Revision, RevisionMeta},
-        Db, Id, LoggedUserName, UserSession,
+        users::{LoggedUserName, UserSession},
+        Db, Id,
     },
     search::SearchResult,
     ArticleIndex, Config, Error, Result,
@@ -137,7 +138,7 @@ fn get(
         // That's probably not worth it right now tho.
         let context = RevContext {
             site_name: &cfg.site_name,
-            author: db.get_user_name(author_id)?.unwrap_or_default(),
+            author: db.users.name_by_id(author_id)?.unwrap_or_default(),
             main_page: article_name == "Main",
             article_name,
             user_name,
@@ -322,7 +323,7 @@ fn revs(
         let revs = db.articles.list_revisions(id)?;
         let mut revs_with_author = Vec::with_capacity(revs.len());
         for (id, rev) in revs.into_iter() {
-            let author = db.get_user_name(rev.author_id)?.unwrap_or_default();
+            let author = db.users.name_by_id(rev.author_id)?.unwrap_or_default();
             revs_with_author.push((id, rev, author));
         }
         #[derive(serde::Serialize)]
@@ -365,7 +366,7 @@ fn rev(
         } = db.articles.get_revision(rev_id)?;
         let context = RevContext {
             site_name: &cfg.site_name,
-            author: db.get_user_name(author_id)?.unwrap_or_default(),
+            author: db.users.name_by_id(author_id)?.unwrap_or_default(),
             main_page: article_name == "Main",
             article_name,
             user_name,

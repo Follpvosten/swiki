@@ -14,7 +14,6 @@ pub struct ArticleIndex {
     name_field: Field,
     content_field: Field,
     date_field: Field,
-    schema: Schema,
     inner: tantivy::Index,
     reader: IndexReader,
 }
@@ -55,7 +54,7 @@ impl ArticleIndex {
         let content_field = schema_builder.add_text_field("content", TEXT | STORED);
         let date_field = schema_builder.add_date_field("last_edited", STORED);
         let schema = schema_builder.build();
-        let inner = tantivy::Index::create_in_ram(schema.clone());
+        let inner = tantivy::Index::create_in_ram(schema);
 
         let mut writer = inner.writer(50_000_000)?;
         for article_id in db.articles.list_articles()? {
@@ -91,7 +90,6 @@ impl ArticleIndex {
             name_field,
             content_field,
             date_field,
-            schema,
             inner,
             reader,
         })
