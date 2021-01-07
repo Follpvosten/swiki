@@ -9,7 +9,6 @@ edition = "2018"
 [dependencies]
 rocket = { git = "https://github.com/SergioBenitez/Rocket.git", rev = "1f1f44f336e5a172361fc1860461bb03667b1ed2" }
 sled = "0.34"
-# uuid = { version = "0.8", features = ["serde", "v4"] }
 thiserror = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -24,9 +23,12 @@ captcha = "0.0.8"
 uuid = { version = "*", features = ["v4"] }
 zeroize = "1"
 base64 = "0.13"
-tantivy = "0.13"
+tantivy = { git = "https://github.com/tantivy-search/tantivy.git", branch = "main" }
 
 [dependencies.rocket_contrib]
 git = "https://github.com/SergioBenitez/Rocket.git"
 rev = "1f1f44f336e5a172361fc1860461bb03667b1ed2"
 features = ["tera_templates", "uuid"]
+
+[dev-dependencies]
+lipsum = "0.7"

@@ -273,8 +273,8 @@ async fn edit_form(
         if new_name {
             // We still need to update the article's name with the content.
             // TODO do we really want to return on error here?
-            search_index.rename_article(
-                &article_name,
+            search_index.add_or_update_article(
+                article_id,
                 &context.article_name,
                 &new_content,
                 Utc::now(),
@@ -285,20 +285,9 @@ async fn edit_form(
         let (rev_id, rev) = res?;
         context.rev_id = Some(rev_id.rev_id());
         db.flush().await?;
-        if new_name {
-            // Rename the article in the search index, replacing it
-            // TODO do we really want to return on error here?
-            search_index.rename_article(
-                &article_name,
-                &context.article_name,
-                &new_content,
-                rev.date,
-            )?;
-        } else {
-            // The name didn't change, so just update the content and the date
-            // TODO do we really want to return on error here?
-            search_index.update_article(&article_name, &new_content, rev.date)?;
-        }
+        // Update the article's content and possibly its name, we don't care here.
+        // TODO do we really want to return on error here?
+        search_index.add_or_update_article(article_id, &article_name, &new_content, rev.date)?;
         Ok(Template::render("article_edit_success", context))
     }
 }

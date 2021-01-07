@@ -5,7 +5,7 @@
     <h1 class="title">{{ article_name }}</h1>
     <hr>
     <section class="content">
-      This article doesn't exist yet. You can help extend Alpakistan Wiki by
+      This article doesn't exist yet. You can help extend {{ site_name }} by
       <a href="{{ article_name }}/edit">adding it!</a>
     </section>
   </div>
