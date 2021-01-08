@@ -50,7 +50,6 @@ mod tests {
     use articles::{rev_id::RevId, Revision, RevisionMeta};
 
     use super::*;
-    use crate::Error;
 
     /// Returns a memory-backed sled database.
     fn sled_db() -> sled::Db {
@@ -72,16 +71,19 @@ mod tests {
         let username = "someone";
         let password = "hunter2";
         let user_id = db.users.register(&username, &password)?;
+        let user2_id = db.users.register("username", "password")?;
         // Make sure the user exists now
         assert!(db.users.name_by_id(user_id)?.is_some());
         // Verifying a correct password returns true
         assert!(db.users.verify_password(user_id, password)?);
         // Verifying a wrong password returns false
         assert!(db.users.verify_password(user_id, "password123")?.not());
-        // Verifying an unknown user returns an error
+        // Verifying the wrong user returns false
+        // Note that it should not be possible to trigger a PasswordNotFound with
+        // normal code anymore, so the verification will just fail.
         assert!(matches!(
-            db.users.verify_password(Id(255), password),
-            Err(Error::PasswordNotFound(_))
+            db.users.verify_password(user2_id, password),
+            Ok(false)
         ));
         Ok(())
     }
@@ -90,7 +92,7 @@ mod tests {
     fn create_article_and_revisions() -> crate::Result<()> {
         let db = db()?;
         let article_name = "MainPage";
-        let author_id = Id(1);
+        let author_id = db.users.register("username", "password")?;
         let content = r#"
 This is a **fun** Article with some minimal *Markdown* in it.
 [Link](Link)"#;
@@ -146,9 +148,13 @@ Something [Link](Links) to something else. New content. Ha ha ha."#;
         let db = db()?;
         let article_name = "MainPage";
         let article_id = db.articles.create(article_name)?;
-        let (rev1_id, _) = db.articles.add_revision(article_id, Id(1), "abc")?;
-        let (rev2_id, _) = db.articles.add_revision(article_id, Id(2), "123")?;
-        let (rev3_id, _) = db.articles.add_revision(article_id, Id(3), "abc123")?;
+        let user1_id = db.users.register("user1", "password123")?;
+        let user2_id = db.users.register("user2", "password123")?;
+        let user3_id = db.users.register("user3", "password123")?;
+
+        let (rev1_id, _) = db.articles.add_revision(article_id, user1_id, "abc")?;
+        let (rev2_id, _) = db.articles.add_revision(article_id, user2_id, "123")?;
+        let (rev3_id, _) = db.articles.add_revision(article_id, user3_id, "abc123")?;
 
         // Retrieve the revisions from the db again
         let revisions = db.articles.list_revisions(article_id)?;
@@ -170,9 +176,9 @@ Something [Link](Links) to something else. New content. Ha ha ha."#;
         assert_eq!(iter.next(), None);
 
         // And compare the author's names
-        assert_eq!(rev1.author_id, Id(1));
-        assert_eq!(rev2.author_id, Id(2));
-        assert_eq!(rev3.author_id, Id(3));
+        assert_eq!(rev1.author_id, user1_id);
+        assert_eq!(rev2.author_id, user2_id);
+        assert_eq!(rev3.author_id, user3_id);
 
         // Retrieve the contents for the verified revision ids
         let content1 = db.articles.get_revision_content(rev1_id)?;

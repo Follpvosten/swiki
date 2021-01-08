@@ -8,7 +8,7 @@ use sled::{
     Tree,
 };
 
-use super::Id;
+use super::{users::UserId, Id};
 use crate::{Error, Result};
 
 pub mod rev_id;
@@ -27,13 +27,13 @@ pub struct Articles {
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Revision {
     pub content: String,
-    pub author_id: Id,
+    pub author_id: UserId,
     pub date: DateTime<Utc>,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
 pub struct RevisionMeta {
-    pub author_id: Id,
+    pub author_id: UserId,
     pub date: DateTime<Utc>,
 }
 
@@ -78,7 +78,7 @@ impl Articles {
                     .map_err(Error::from)
                     .and_then(|(revid_ivec, authorid_ivec)| {
                         let rev_id = RevId::from_bytes(&revid_ivec)?.rev_id();
-                        let authorid = Id::from_bytes(authorid_ivec.as_ref())?;
+                        let authorid = UserId(Id::from_bytes(authorid_ivec.as_ref())?);
                         Ok((rev_id, authorid))
                     })
             });
@@ -119,7 +119,7 @@ impl Articles {
             None => return Ok(None),
             Some((revid_ivec, authorid_ivec)) => {
                 let revid = RevId::from_bytes(&revid_ivec)?;
-                let authorid = authorid_ivec.as_ref().try_into()?;
+                let authorid = UserId(authorid_ivec.as_ref().try_into()?);
                 (revid, authorid)
             }
         };
@@ -158,12 +158,13 @@ impl Articles {
     }
     /// Get all data for the given revision
     pub fn get_revision(&self, rev_id: RevId) -> Result<Revision> {
-        let author = self
-            .revid_author
-            .get(rev_id.to_bytes())?
-            .ok_or(Error::RevisionUnknown(rev_id))?
-            .as_ref()
-            .try_into()?;
+        let author = UserId(
+            self.revid_author
+                .get(rev_id.to_bytes())?
+                .ok_or(Error::RevisionUnknown(rev_id))?
+                .as_ref()
+                .try_into()?,
+        );
         let date = self.get_revision_date(rev_id)?;
         let content = self.get_revision_content(rev_id)?;
 
@@ -210,7 +211,7 @@ impl Articles {
     pub fn add_revision(
         &self,
         article_id: Id,
-        author_id: Id,
+        author_id: UserId,
         content: &str,
     ) -> Result<(RevId, RevisionMeta)> {
         let id = match self.get_current_revision(article_id)? {

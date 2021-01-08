@@ -16,9 +16,6 @@ impl Id {
     pub fn first() -> Self {
         Id(0)
     }
-    pub fn increment(&mut self) {
-        *self = self.next();
-    }
     pub fn next(self) -> Self {
         Id(self.0 + 1)
     }

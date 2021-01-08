@@ -1,5 +1,6 @@
 use std::{
     convert::{TryFrom, TryInto},
+    ops::Deref,
     result::Result as StdResult,
 };
 
@@ -21,10 +22,20 @@ pub struct Users {
     pub(super) sessionid_userid: Tree,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+pub struct UserId(pub(super) Id);
+impl Deref for UserId {
+    type Target = Id;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct UserSession {
     pub session_id: Uuid,
-    pub user_id: Id,
+    pub user_id: UserId,
 }
 #[rocket::async_trait]
 impl<'a, 'r> FromRequest<'a, 'r> for &'a UserSession {
@@ -43,11 +54,12 @@ impl<'a, 'r> FromRequest<'a, 'r> for &'a UserSession {
             // ...and also early return if we can't get a db handle...
             let db: &Db = request.managed_state()?;
             // ...of course, also if querying the session returns an error...
-            let user_id: Option<Id> = match db.users.get_session_user(session_id) {
+            let user_id: Option<UserId> = match db.users.get_session_user(session_id) {
                 Err(e) => {
                     log::error!("Error getting session user: {}", e);
                     None
                 }
+                // TODO: wtf? Optionception, we're returning an Option<Option<UserId>>
                 Ok(user_id) => Some(user_id),
             }?;
             // ...and finally, if the session doesn't exist (returns None), also forward.
@@ -103,14 +115,14 @@ fn verify_password(hash: &str, password: &str) -> StdResult<bool, argon2::Error>
 }
 
 impl Users {
-    pub fn id_by_name(&self, username: &str) -> Result<Option<Id>> {
+    pub fn id_by_name(&self, username: &str) -> Result<Option<UserId>> {
         Ok(self
             .username_userid
             .get(username.as_bytes())?
-            .map(|ivec| ivec.as_ref().try_into())
+            .map(|ivec| ivec.as_ref().try_into().map(UserId))
             .transpose()?)
     }
-    pub fn name_by_id(&self, user_id: Id) -> Result<Option<String>> {
+    pub fn name_by_id(&self, user_id: UserId) -> Result<Option<String>> {
         Ok(self
             .userid_username
             .get(user_id.to_bytes())?
@@ -118,17 +130,17 @@ impl Users {
     }
 
     // TODO Email
-    pub fn register(&self, username: &str, password: &str) -> Result<Id> {
+    pub fn register(&self, username: &str, password: &str) -> Result<UserId> {
         if self.username_userid.contains_key(username.as_bytes())? {
             return Err(Error::UserAlreadyExists(username.to_string()));
         }
-        let id = match self.userid_password.iter().next_back() {
+        let id = UserId(match self.userid_password.iter().next_back() {
             None => Id::first(),
             Some(res) => {
                 let curr_id: Id = res?.0.as_ref().try_into()?;
                 curr_id.next()
             }
-        };
+        });
         (
             &self.username_userid,
             &self.userid_username,
@@ -148,7 +160,7 @@ impl Users {
         Ok(id)
     }
 
-    pub fn verify_password(&self, user_id: Id, password: &str) -> Result<bool> {
+    pub fn verify_password(&self, user_id: UserId, password: &str) -> Result<bool> {
         let hash = self
             .userid_password
             .get(user_id.to_bytes())?
@@ -157,11 +169,11 @@ impl Users {
         Ok(verify_password(&hash, password)?)
     }
 
-    pub fn create_session(&self, user_id: Id) -> Result<Uuid> {
-        let id = Uuid::new_v4();
+    pub fn create_session(&self, user_id: UserId) -> Result<Uuid> {
+        let session_id = Uuid::new_v4();
         self.sessionid_userid
-            .insert(id.as_bytes(), &user_id.to_bytes())?;
-        Ok(id)
+            .insert(session_id.as_bytes(), &user_id.to_bytes())?;
+        Ok(session_id)
     }
 
     pub fn destroy_session(&self, session_id: Uuid) -> Result<()> {
@@ -169,10 +181,10 @@ impl Users {
         Ok(())
     }
 
-    pub fn get_session_user(&self, session_id: Uuid) -> Result<Option<Id>> {
+    pub fn get_session_user(&self, session_id: Uuid) -> Result<Option<UserId>> {
         self.sessionid_userid
             .get(session_id.as_bytes())?
-            .map(|ivec| Id::from_bytes(&ivec))
+            .map(|ivec| Id::from_bytes(&ivec).map(UserId))
             .transpose()
     }
 

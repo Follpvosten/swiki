@@ -10,7 +10,7 @@ use rocket_contrib::templates::{tera, Template};
 use sled::transaction::TransactionError;
 use tantivy::{query::QueryParserError, TantivyError};
 
-use crate::database::{articles::rev_id::RevId, Id};
+use crate::database::{articles::rev_id::RevId, users::UserId, Id};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -41,7 +41,7 @@ pub enum Error {
     #[error("Database returned inconsistent data: article id {0:?} not found")]
     ArticleDataInconsistent(Id),
     #[error("User id {0:?} does not exist or doesn't have a password")]
-    PasswordNotFound(Id),
+    PasswordNotFound(UserId),
     #[error("Error rendering template: {0}")]
     TemplateError(#[from] tera::Error),
     #[error("Captcha error; please retry!")]

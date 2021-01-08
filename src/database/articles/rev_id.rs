@@ -44,8 +44,7 @@ impl RevId {
         self.1
     }
 
-    pub fn next(mut self) -> Self {
-        self.1.increment();
-        self
+    pub fn next(self) -> Self {
+        RevId(self.0, self.1.next())
     }
 }
