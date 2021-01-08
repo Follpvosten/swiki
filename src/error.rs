@@ -10,7 +10,10 @@ use rocket_contrib::templates::{tera, Template};
 use sled::transaction::TransactionError;
 use tantivy::{query::QueryParserError, TantivyError};
 
-use crate::database::{articles::rev_id::RevId, users::UserId, Id};
+use crate::database::{
+    articles::{rev_id::RevId, ArticleId},
+    users::UserId,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -39,7 +42,7 @@ pub enum Error {
     #[error("User data inconsistent: user {0} exists, but has no password")]
     UserDataInconsistent(String),
     #[error("Database returned inconsistent data: article id {0:?} not found")]
-    ArticleDataInconsistent(Id),
+    ArticleDataInconsistent(ArticleId),
     #[error("User id {0:?} does not exist or doesn't have a password")]
     PasswordNotFound(UserId),
     #[error("Error rendering template: {0}")]

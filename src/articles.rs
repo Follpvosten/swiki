@@ -142,7 +142,7 @@ fn get(
             main_page: article_name == "Main",
             article_name,
             user_name,
-            rev_id: rev_id.rev_id(),
+            rev_id: rev_id.rev_number(),
             content: markdown_to_html(&content),
             date,
             specific_rev: false,
@@ -283,7 +283,7 @@ async fn edit_form(
         Ok(Template::render("article_edit_success", context))
     } else {
         let (rev_id, rev) = res?;
-        context.rev_id = Some(rev_id.rev_id());
+        context.rev_id = Some(rev_id.rev_number());
         db.flush().await?;
         // Update the article's content and possibly its name, we don't care here.
         // TODO do we really want to return on error here?
@@ -313,7 +313,7 @@ fn revs(
         let mut revs_with_author = Vec::with_capacity(revs.len());
         for (id, rev) in revs.into_iter() {
             let author = db.users.name_by_id(rev.author_id)?.unwrap_or_default();
-            revs_with_author.push((id, rev, author));
+            revs_with_author.push((id.rev_number(), rev, author));
         }
         #[derive(serde::Serialize)]
         struct RevsContext<'a> {
@@ -347,7 +347,18 @@ fn rev(
     user_name: Option<LoggedUserName>,
 ) -> Result<Template> {
     if let Some(article_id) = db.articles.id_by_name(&article_name)? {
-        let rev_id = (article_id, rev_id).into();
+        let rev_id = match db.articles.verified_rev_id(article_id, rev_id) {
+            Ok(id) => id,
+            Err(Error::RevisionUnknown(id)) => {
+                let mut context = Context::new();
+                context.insert("site_name", &cfg.site_name);
+                context.insert("article_name", &article_name);
+                context.insert("rev_number", &id.rev_number());
+                context.insert("user_name", &user_name);
+                return Ok(Template::render("article_404", context.into_json()));
+            }
+            Err(e) => return Err(e),
+        };
         let Revision {
             content,
             author_id,
@@ -359,7 +370,7 @@ fn rev(
             main_page: article_name == "Main",
             article_name,
             user_name,
-            rev_id: rev_id.rev_id(),
+            rev_id: rev_id.rev_number(),
             content: markdown_to_html(&content),
             date,
             specific_rev: true,

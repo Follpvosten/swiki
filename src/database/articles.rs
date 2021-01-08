@@ -1,4 +1,4 @@
-use std::convert::TryInto;
+use std::{convert::TryInto, ops::Deref};
 
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
@@ -24,6 +24,19 @@ pub struct Articles {
     pub(super) revid_date: Tree,
 }
 
+/// Strongly typed articleid. The inner type is pub(super) because you should
+/// only ever be able to acquire one from the database, which means it can
+/// be assumed to actually exist.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+pub struct ArticleId(pub(super) Id);
+impl Deref for ArticleId {
+    type Target = Id;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Revision {
     pub content: String,
@@ -38,13 +51,13 @@ pub struct RevisionMeta {
 }
 
 impl Articles {
-    pub fn id_by_name(&self, name: &str) -> Result<Option<Id>> {
+    pub fn id_by_name(&self, name: &str) -> Result<Option<ArticleId>> {
         self.articlename_id
             .get(name.as_bytes())?
-            .map(|ivec| ivec.as_ref().try_into())
+            .map(|ivec| ivec.as_ref().try_into().map(ArticleId))
             .transpose()
     }
-    pub fn name_by_id(&self, id: Id) -> Result<Option<String>> {
+    pub fn name_by_id(&self, id: ArticleId) -> Result<Option<String>> {
         Ok(self
             .articleid_name
             .get(&id.to_bytes())?
@@ -53,15 +66,24 @@ impl Articles {
     pub fn name_exists(&self, name: &str) -> Result<bool> {
         Ok(self.articlename_id.contains_key(name.as_bytes())?)
     }
-    pub fn list_articles(&self) -> Result<Vec<Id>> {
+    pub fn list_articles(&self) -> Result<Vec<ArticleId>> {
         self.articleid_name
             .iter()
             .map_ok(|(id_ivec, _)| id_ivec)
             .map(|res| {
                 res.map_err(Error::from)
                     .and_then(|ivec| ivec.as_ref().try_into())
+                    .map(ArticleId)
             })
             .collect()
+    }
+    pub fn verified_rev_id(&self, article_id: ArticleId, rev_number: Id) -> Result<RevId> {
+        let rev_id = RevId(article_id, rev_number);
+        if self.revid_author.contains_key(rev_id.to_bytes())? {
+            Ok(rev_id)
+        } else {
+            Err(Error::RevisionUnknown(rev_id))
+        }
     }
     /// Retrieves the list of revision ids for the given article id.
     /// Returns Ok(None) when the article doesn't exist.
@@ -69,7 +91,7 @@ impl Articles {
     /// make sense for listing the revisions.
     /// TODO or to figure out: We currently return an empty vec when the
     /// article id is unknown. Should it be an Option?
-    pub fn list_revisions(&self, article_id: Id) -> Result<Vec<(Id, RevisionMeta)>> {
+    pub fn list_revisions(&self, article_id: ArticleId) -> Result<Vec<(RevId, RevisionMeta)>> {
         let authors = self
             .revid_author
             .scan_prefix(article_id.to_bytes())
@@ -77,7 +99,7 @@ impl Articles {
                 result
                     .map_err(Error::from)
                     .and_then(|(revid_ivec, authorid_ivec)| {
-                        let rev_id = RevId::from_bytes(&revid_ivec)?.rev_id();
+                        let rev_id = RevId::from_bytes(&revid_ivec)?.rev_number();
                         let authorid = UserId(Id::from_bytes(authorid_ivec.as_ref())?);
                         Ok((rev_id, authorid))
                     })
@@ -95,24 +117,26 @@ impl Articles {
             .zip(dates)
             .map(|(res1, res2)| {
                 res1.and_then(move |(rev_id, author_id)| {
-                    res2.map(move |date| (rev_id, RevisionMeta { author_id, date }))
+                    res2.map(move |date| {
+                        (RevId(article_id, rev_id), RevisionMeta { author_id, date })
+                    })
                 })
             })
             .collect()
     }
-    pub fn get_current_content(&self, article_id: Id) -> Result<Option<String>> {
+    pub fn get_current_content(&self, id: ArticleId) -> Result<Option<String>> {
         Ok(self
             .revid_content
-            .scan_prefix(article_id.to_bytes())
+            .scan_prefix(id.to_bytes())
             .last()
             .transpose()?
             .map(|(_, content)| String::from_utf8(content.to_vec()).unwrap()))
     }
     /// Get the current revision for the given article id if it exists.
-    pub fn get_current_revision(&self, article_id: Id) -> Result<Option<(RevId, Revision)>> {
+    pub fn get_current_revision(&self, id: ArticleId) -> Result<Option<(RevId, Revision)>> {
         let (rev_id, author_id) = match self
             .revid_author
-            .scan_prefix(article_id.to_bytes())
+            .scan_prefix(id.to_bytes())
             .last()
             .transpose()?
         {
@@ -124,11 +148,11 @@ impl Articles {
             }
         };
         // Since we now have a full revision id...
-        let date = self.get_revision_date(rev_id).map_err(|err| match err {
+        let date = self.get_rev_date(rev_id).map_err(|err| match err {
             Error::RevisionUnknown(id) => Error::RevisionDataInconsistent(id),
             _ => err,
         })?;
-        let content = self.get_revision_content(rev_id).map_err(|err| match err {
+        let content = self.get_rev_content(rev_id).map_err(|err| match err {
             Error::RevisionUnknown(id) => Error::RevisionDataInconsistent(id),
             _ => err,
         })?;
@@ -142,14 +166,14 @@ impl Articles {
             },
         )))
     }
-    pub fn get_revision_content(&self, rev_id: RevId) -> Result<String> {
+    pub fn get_rev_content(&self, rev_id: RevId) -> Result<String> {
         self.revid_content
             .get(rev_id.to_bytes())?
             //                  will panic on disk corruption v
             .map(|ivec| String::from_utf8(ivec.to_vec()).unwrap())
             .ok_or(Error::RevisionUnknown(rev_id))
     }
-    pub fn get_revision_date(&self, rev_id: RevId) -> Result<DateTime<Utc>> {
+    pub fn get_rev_date(&self, rev_id: RevId) -> Result<DateTime<Utc>> {
         let date = self
             .revid_date
             .get(rev_id.to_bytes())?
@@ -165,8 +189,8 @@ impl Articles {
                 .as_ref()
                 .try_into()?,
         );
-        let date = self.get_revision_date(rev_id)?;
-        let content = self.get_revision_content(rev_id)?;
+        let date = self.get_rev_date(rev_id)?;
+        let content = self.get_rev_content(rev_id)?;
 
         Ok(Revision {
             content,
@@ -175,14 +199,14 @@ impl Articles {
         })
     }
     /// Create an empty article with no revisions.
-    pub fn create(&self, name: &str) -> Result<Id> {
-        let id = match self.articleid_name.iter().next_back() {
+    pub fn create(&self, name: &str) -> Result<ArticleId> {
+        let id = ArticleId(match self.articleid_name.iter().next_back() {
             None => Id::first(),
             Some(res) => {
                 let curr_id: Id = res?.0.as_ref().try_into()?;
                 curr_id.next()
             }
-        };
+        });
         (&self.articleid_name, &self.articlename_id).transaction(|(id_name, name_id)| {
             id_name.insert(&id.to_bytes(), name.as_bytes())?;
             name_id.insert(name.as_bytes(), &id.to_bytes())?;
@@ -190,7 +214,7 @@ impl Articles {
         })?;
         Ok(id)
     }
-    pub fn change_name(&self, article_id: Id, new_name: &str) -> Result<()> {
+    pub fn change_name(&self, article_id: ArticleId, new_name: &str) -> Result<()> {
         // Article names must be unique
         if self.articlename_id.contains_key(new_name.as_bytes())? {
             return Err(Error::DuplicateArticleName(new_name.into()));
@@ -210,7 +234,7 @@ impl Articles {
     /// The core part of this type as it touches *all* of its trees.
     pub fn add_revision(
         &self,
-        article_id: Id,
+        article_id: ArticleId,
         author_id: UserId,
         content: &str,
     ) -> Result<(RevId, RevisionMeta)> {

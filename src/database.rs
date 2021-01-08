@@ -47,7 +47,7 @@ impl Db {
 mod tests {
     use std::ops::Not;
 
-    use articles::{rev_id::RevId, Revision, RevisionMeta};
+    use articles::{Revision, RevisionMeta};
 
     use super::*;
 
@@ -164,7 +164,6 @@ Something [Link](Links) to something else. New content. Ha ha ha."#;
             .iter()
             .map(|(id, _)| id)
             .copied()
-            .map(|rev_id| RevId::from((article_id, rev_id)))
             .collect::<Vec<_>>();
         assert_eq!(revision_ids, vec![rev1_id, rev2_id, rev3_id]);
 
@@ -181,9 +180,9 @@ Something [Link](Links) to something else. New content. Ha ha ha."#;
         assert_eq!(rev3.author_id, user3_id);
 
         // Retrieve the contents for the verified revision ids
-        let content1 = db.articles.get_revision_content(rev1_id)?;
-        let content2 = db.articles.get_revision_content(rev2_id)?;
-        let content3 = db.articles.get_revision_content(rev3_id)?;
+        let content1 = db.articles.get_rev_content(rev1_id)?;
+        let content2 = db.articles.get_rev_content(rev2_id)?;
+        let content3 = db.articles.get_rev_content(rev3_id)?;
 
         // Compare them to what we passed to add_revision
         assert_eq!(content1.as_str(), "abc");

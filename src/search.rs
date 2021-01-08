@@ -8,7 +8,7 @@ use tantivy::{
     IndexReader, Snippet, SnippetGenerator, Term,
 };
 
-use crate::{database::Id, Result};
+use crate::{database::articles::ArticleId, Result};
 
 pub struct ArticleIndex {
     id_field: Field,
@@ -184,7 +184,7 @@ impl ArticleIndex {
     /// rename it, making the old rename_article method redundant.
     pub fn add_or_update_article(
         &self,
-        id: Id,
+        id: ArticleId,
         article_name: &str,
         content: &str,
         date: DateTime<Utc>,
@@ -209,7 +209,7 @@ mod tests {
     use chrono::Utc;
 
     use super::{markdown_to_text, ArticleIndex};
-    use crate::{database::Id, Db, Result};
+    use crate::{Db, Result};
 
     #[test]
     fn index_from_db() -> Result<()> {
@@ -250,19 +250,20 @@ mod tests {
     fn add_update_and_rename_works() -> Result<()> {
         let empty_db = Db::load_or_create(sled::Config::default().temporary(true).open()?)?;
         let index = ArticleIndex::new(&empty_db)?;
+        let article_id = empty_db.articles.create("blah blah")?;
         let name = "Lorem Ipsum";
         let text = "This is a fun short text that should be very texty.";
         // Check if an empty db works at all
         assert_eq!(index.search_by_text(name)?.len(), 0);
         // Add an article
-        index.add_or_update_article(Id(1), name, text, Utc::now())?;
+        index.add_or_update_article(article_id, name, text, Utc::now())?;
         // Force the indexreader to reload.
         index.reader.reload()?;
         // Verify we can find it
         assert_eq!(dbg!(index.search_by_text(name)?).len(), 1);
         // Rename the article
         let new_name = "Baumhardt 123";
-        index.add_or_update_article(Id(1), new_name, text, Utc::now())?;
+        index.add_or_update_article(article_id, new_name, text, Utc::now())?;
         index.reader.reload()?;
         // Check if the old name yields no results, but the new one does
         assert_eq!(dbg!(index.search_by_text(new_name)?).len(), 1);

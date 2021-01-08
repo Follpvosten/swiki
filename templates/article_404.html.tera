@@ -5,8 +5,14 @@
     <h1 class="title">{{ article_name }}</h1>
     <hr>
     <section class="content">
+      {% if rev_number %}
+      The requested revision <code>#{{ rev_number }}</code> does not exist.
+      You can <a href="/{{ article_name }}">go back to the article</a> or
+      to its <a href="/{{ article_name }}/revs">revision list</a> directly.
+      {% else %}
       This article doesn't exist yet. You can help extend {{ site_name }} by
       <a href="{{ article_name }}/edit">adding it!</a>
+      {% endif %}
     </section>
   </div>
 </section>

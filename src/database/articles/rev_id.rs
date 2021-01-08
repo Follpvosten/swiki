@@ -1,28 +1,26 @@
-use crate::database::Id;
 use std::convert::TryInto;
+
+use super::ArticleId;
+use crate::database::Id;
 
 /// A revision id.
 /// This type wraps an article id and a revision number (both u32).
 /// It is used to store an article's revision so it's easier to query
 /// e.g. the latest revision of an article.
+/// This should only ever be obtained from the database.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RevId(Id, Id);
-
-impl From<(u32, u32)> for RevId {
-    fn from((article_id, rev_number): (u32, u32)) -> Self {
-        Self(Id(article_id), Id(rev_number))
-    }
-}
-impl From<(Id, Id)> for RevId {
-    fn from((article_id, rev_number): (Id, Id)) -> Self {
-        Self(article_id, rev_number)
-    }
-}
+pub struct RevId(
+    pub(in crate::database) ArticleId,
+    pub(in crate::database) Id,
+);
 
 impl RevId {
     pub fn from_bytes(bytes: &[u8]) -> crate::Result<Self> {
         let (article_id, rev_number) = bytes.split_at(4);
-        Ok(Self(article_id.try_into()?, rev_number.try_into()?))
+        Ok(Self(
+            ArticleId(article_id.try_into()?),
+            rev_number.try_into()?,
+        ))
     }
     pub fn to_bytes(&self) -> [u8; 8] {
         // TODO: This is stupid ugly, rust-lang pls fix this.
@@ -33,14 +31,14 @@ impl RevId {
         ]
     }
 
-    pub fn first(article_id: Id) -> RevId {
+    pub fn first(article_id: ArticleId) -> RevId {
         Self(article_id, Id::first())
     }
 
-    pub fn article_id(&self) -> Id {
+    pub fn article_id(&self) -> ArticleId {
         self.0
     }
-    pub fn rev_id(&self) -> Id {
+    pub fn rev_number(&self) -> Id {
         self.1
     }
 

@@ -22,6 +22,9 @@ pub struct Users {
     pub(super) sessionid_userid: Tree,
 }
 
+/// Strongly typed user id. The inner type is pub(super) because you should
+/// only ever be able to acquire one from the database, which means it can
+/// be assumed to actually exist.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
 pub struct UserId(pub(super) Id);
 impl Deref for UserId {
