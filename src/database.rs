@@ -45,8 +45,6 @@ impl Db {
 
 #[cfg(test)]
 mod tests {
-    use std::ops::Not;
-
     use articles::{Revision, RevisionMeta};
 
     use super::*;
@@ -75,16 +73,13 @@ mod tests {
         // Make sure the user exists now
         assert!(db.users.name_by_id(user_id)?.is_some());
         // Verifying a correct password returns true
-        assert!(db.users.verify_password(user_id, password)?);
+        assert!(db.users.try_login(user_id, password)?.is_some());
         // Verifying a wrong password returns false
-        assert!(db.users.verify_password(user_id, "password123")?.not());
+        assert!(db.users.try_login(user_id, "password123")?.is_none());
         // Verifying the wrong user returns false
         // Note that it should not be possible to trigger a PasswordNotFound with
         // normal code anymore, so the verification will just fail.
-        assert!(matches!(
-            db.users.verify_password(user2_id, password),
-            Ok(false)
-        ));
+        assert!(db.users.try_login(user2_id, password)?.is_none());
         Ok(())
     }
 

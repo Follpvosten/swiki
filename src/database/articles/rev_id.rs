@@ -7,7 +7,7 @@ use crate::database::Id;
 /// This type wraps an article id and a revision number (both u32).
 /// It is used to store an article's revision so it's easier to query
 /// e.g. the latest revision of an article.
-/// This should only ever be obtained from the database.
+/// Values of this type can only ever be obtained from the database.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RevId(
     pub(in crate::database) ArticleId,

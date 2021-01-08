@@ -208,21 +208,16 @@ async fn login_form(
         return Ok(Template::render("login", context));
     };
 
-    if !db.users.verify_password(user_id, &password)? {
-        password.zeroize();
-        let context = LoginPageContext {
-            site_name: &cfg.site_name,
-            username: Some(username),
-            username_unknown: false,
-            wrong_password: true,
-        };
-        Ok(Template::render("login", context))
-    } else {
+    if let Some(session) = db.users.try_login(user_id, &password)? {
         password.zeroize();
         // Everything went well?? Wuuuuut
-        let id = db.users.create_session(user_id)?;
+        // try_login creates a session, we'll want to save that
         db.flush().await?;
-        cookies.add(Cookie::build("session_id", base64::encode(id.as_bytes())).finish());
+        // And save it on the client-side in the user's cookies
+        cookies.add(Cookie::new(
+            "session_id",
+            base64::encode(session.session_id.as_bytes()),
+        ));
         // TODO: Do we also auto-login on registrations?
         let mut context = Context::new();
         context.insert("site_name", &cfg.site_name);
@@ -231,6 +226,15 @@ async fn login_form(
         // would cause the top bar to wrongly show a logged-in user.
         context.insert("user_name", &username);
         Ok(Template::render("login_success", context.into_json()))
+    } else {
+        password.zeroize();
+        let context = LoginPageContext {
+            site_name: &cfg.site_name,
+            username: Some(username),
+            username_unknown: false,
+            wrong_password: true,
+        };
+        Ok(Template::render("login", context))
     }
 }
 

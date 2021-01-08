@@ -163,16 +163,24 @@ impl Users {
         Ok(id)
     }
 
-    pub fn verify_password(&self, user_id: UserId, password: &str) -> Result<bool> {
+    pub fn try_login(&self, user_id: UserId, password: &str) -> Result<Option<UserSession>> {
         let hash = self
             .userid_password
             .get(user_id.to_bytes())?
             .map(|ivec| String::from_utf8(ivec.to_vec()).unwrap())
             .ok_or(Error::PasswordNotFound(user_id))?;
-        Ok(verify_password(&hash, password)?)
+        if verify_password(&hash, password)? {
+            let session_id = self.create_session(user_id)?;
+            Ok(Some(UserSession {
+                user_id,
+                session_id,
+            }))
+        } else {
+            Ok(None)
+        }
     }
 
-    pub fn create_session(&self, user_id: UserId) -> Result<Uuid> {
+    fn create_session(&self, user_id: UserId) -> Result<Uuid> {
         let session_id = Uuid::new_v4();
         self.sessionid_userid
             .insert(session_id.as_bytes(), &user_id.to_bytes())?;
