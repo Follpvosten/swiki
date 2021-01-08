@@ -68,6 +68,7 @@ async fn gen_captcha_and_id(cache: &Cache) -> Result<(Uuid, String)> {
 #[derive(serde::Serialize)]
 struct RegisterPageContext<'a> {
     site_name: &'a str,
+    page_name: &'static str,
     username: Option<String>,
     captcha_base64: String,
     captcha_uuid: String,
@@ -79,6 +80,7 @@ impl<'a> Default for RegisterPageContext<'a> {
     fn default() -> Self {
         Self {
             site_name: "",
+            page_name: "Register",
             username: None,
             captcha_base64: Default::default(),
             captcha_uuid: Default::default(),
@@ -148,6 +150,7 @@ async fn register_form(
             pwds_dont_match,
             username_taken,
             failed_captcha,
+            ..Default::default()
         };
         return Ok(Template::render("register", context));
     }
@@ -168,8 +171,10 @@ fn login_redirect(_session: &UserSession) -> Redirect {
 }
 #[get("/login", rank = 2)]
 fn login_page(cfg: State<Config>) -> Template {
-    // TODO handle already logged in state
-    Template::render("login", &*cfg)
+    let mut context = Context::new();
+    context.insert("site_name", &cfg.site_name);
+    context.insert("page_name", "Login");
+    Template::render("login", context.into_json())
 }
 #[derive(FromForm)]
 struct LoginRequest {
@@ -186,6 +191,7 @@ async fn login_form(
     #[derive(serde::Serialize)]
     struct LoginPageContext<'a> {
         site_name: &'a str,
+        page_name: &'static str,
         username: Option<String>,
         username_unknown: bool,
         wrong_password: bool,
@@ -201,6 +207,7 @@ async fn login_form(
         password.zeroize();
         let context = LoginPageContext {
             site_name: &cfg.site_name,
+            page_name: "Login",
             username: Some(username),
             username_unknown: true,
             wrong_password: false,
@@ -230,6 +237,7 @@ async fn login_form(
         password.zeroize();
         let context = LoginPageContext {
             site_name: &cfg.site_name,
+            page_name: "Login",
             username: Some(username),
             username_unknown: false,
             wrong_password: true,
