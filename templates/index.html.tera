@@ -14,9 +14,10 @@
     - {{ page_name }}
     {%- endif -%}
   </title>
-  <link href="https://cdn.jsdelivr.net/npm/bulma@0.9.1/css/bulma.min.css" rel="stylesheet">
-  <link href="https://use.fontawesome.com/releases/v5.14.0/css/all.css" rel="stylesheet">
-  <link href="/res/index.css" rel="stylesheet">
+  <link rel="stylesheet" href="/res/css/bulma.min.css">
+  <link rel="stylesheet" href="/res/css/fontawesome.min.css">
+  <link rel="stylesheet" href="/res/css/solid.min.css">
+  <link rel="stylesheet" href="/res/css/index.css">
 
   {% block extra_head %}
   {% endblock extra_head %}
@@ -42,7 +43,8 @@
               <div class="control">
                 <button class="button is-info" type="submit">
                   <span class="icon is-small">
-                    <i class="fas fa-search"></i>
+                    <i class="fas fa-search" aria-hidden="true"></i>
+                    <span class="sr-only">Search</span>
                   </span>
                 </button>
               </div>
@@ -66,6 +68,7 @@
         <a class="navbar-item" href="/u/logout">
           <span class="icon">
             <i class="fas fa-sign-out-alt"></i>
+            <span class="sr-only">Logout</span>
           </span>
         </a>
         {% else %}
