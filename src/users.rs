@@ -6,10 +6,8 @@ use rocket::{
     response::Redirect,
     FromForm, State,
 };
-use rocket_contrib::{
-    templates::{tera::Context, Template},
-    uuid::Uuid as RocketUuid,
-};
+use rocket_contrib::{templates::Template, uuid::Uuid as RocketUuid};
+use serde_json::json;
 use uuid::Uuid;
 use zeroize::Zeroize;
 
@@ -171,10 +169,11 @@ fn login_redirect(_session: &UserSession) -> Redirect {
 }
 #[get("/login", rank = 2)]
 fn login_page(cfg: State<Config>) -> Template {
-    let mut context = Context::new();
-    context.insert("site_name", &cfg.site_name);
-    context.insert("page_name", "Login");
-    Template::render("login", context.into_json())
+    let context = json! {{
+        "site_name": &cfg.site_name,
+        "page_name": "Login",
+    }};
+    Template::render("login", context)
 }
 #[derive(FromForm)]
 struct LoginRequest {
@@ -226,13 +225,14 @@ async fn login_form(
             base64::encode(session.session_id.as_bytes()),
         ));
         // TODO: Do we also auto-login on registrations?
-        let mut context = Context::new();
-        context.insert("site_name", &cfg.site_name);
         // Just realized that this is a hack: A field "username" in the
         // context is only used by the "login" template, while user_name
         // would cause the top bar to wrongly show a logged-in user.
-        context.insert("user_name", &username);
-        Ok(Template::render("login_success", context.into_json()))
+        let context = json! {{
+            "site_name": &cfg.site_name,
+            "user_name": &username,
+        }};
+        Ok(Template::render("login_success", context))
     } else {
         password.zeroize();
         let context = LoginPageContext {

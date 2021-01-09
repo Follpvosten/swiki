@@ -1,15 +1,15 @@
 use chrono::Utc;
 use pulldown_cmark::{html, BrokenLink, Options, Parser};
 use rocket::{get, post, request::Form, response::Redirect, FromForm, Route, State};
-use rocket_contrib::templates::{tera::Context, Template};
+use rocket_contrib::templates::Template;
+use serde_json::json;
 
 use crate::{
     database::{
-        articles::{Revision, RevisionMeta},
+        articles::Revision,
         users::{LoggedUserName, UserSession},
         Db, Id,
     },
-    search::SearchResult,
     ArticleIndex, Config, Error, Result,
 };
 
@@ -27,17 +27,13 @@ pub fn routes() -> Vec<Route> {
     ]
 }
 
-fn render_404(
-    cfg: &Config,
-    article_name: &str,
-    user_name: &Option<LoggedUserName>,
-) -> Result<Template> {
-    let mut context = Context::from_serialize(cfg)?;
-    context.insert("article_name", article_name);
-    if let Some(user_name) = user_name.as_ref() {
-        context.insert("user_name", user_name.0.as_str());
-    }
-    Ok(Template::render("article_404", context.into_json()))
+fn render_404(cfg: &Config, article_name: &str, user_name: &Option<LoggedUserName>) -> Template {
+    let context = json! {{
+        "site_name": cfg.site_name,
+        "article_name": article_name,
+        "user_name": user_name,
+    }};
+    Template::render("article_404", context)
 }
 
 fn markdown_to_html(input: &str) -> String {
@@ -59,6 +55,7 @@ fn markdown_to_html(input: &str) -> String {
     output
 }
 
+/// Context used to render an existing article revision.
 #[derive(serde::Serialize)]
 struct RevContext<'a> {
     site_name: &'a str,
@@ -80,34 +77,25 @@ fn search(
     user_name: Option<LoggedUserName>,
     q: String,
 ) -> Result<Template> {
-    #[derive(serde::Serialize)]
-    struct SearchResultsContext<'a> {
-        site_name: &'a str,
-        user_name: Option<LoggedUserName>,
-        results: Vec<SearchResult>,
-        query: String,
-        exact_match: bool,
-    }
-    let results = index.search_by_text(&q)?;
-    let exact_match = db.articles.name_exists(&q)?;
-    let context = SearchResultsContext {
-        site_name: &cfg.site_name,
-        user_name,
-        results,
-        query: q,
-        exact_match,
-    };
+    let context = json! {{
+        "exact_match": db.articles.name_exists(&q)?,
+        "results": index.search_by_text(&q)?,
+        "site_name": &cfg.site_name,
+        "page_name": "Search",
+        "user_name": user_name,
+        "query": q,
+    }};
     Ok(Template::render("search", context))
 }
 
 #[get("/create", rank = -20)]
 fn create(cfg: State<Config>, user_name: Option<LoggedUserName>) -> Template {
-    let mut context = Context::new();
-    context.insert("site_name", &cfg.site_name);
-    if let Some(user_name) = user_name {
-        context.insert("user_name", &user_name.0);
-    }
-    Template::render("article_create", context.into_json())
+    let context = json! {{
+        "site_name": &cfg.site_name,
+        "page_name": "New Article",
+        "user_name": user_name,
+    }};
+    Template::render("article_create", context)
 }
 
 #[get("/<article_name>")]
@@ -149,7 +137,7 @@ fn get(
         };
         Ok(Template::render("article", context))
     } else {
-        render_404(&*cfg, &article_name, &user_name)
+        Ok(render_404(&*cfg, &article_name, &user_name))
     }
 }
 
@@ -247,23 +235,15 @@ async fn edit_form(
         .articles
         .add_revision(article_id, session.user_id, &new_content);
 
-    #[derive(serde::Serialize)]
-    struct EditSuccessContext<'a> {
-        site_name: &'a str,
-        article_name: String,
-        user_name: LoggedUserName,
-        rev_id: Option<Id>,
-        main_page: bool,
-        new_name: bool,
-    }
-    let mut context = EditSuccessContext {
-        site_name: &cfg.site_name,
-        main_page: article_name == "Main",
-        article_name: new_title.unwrap_or_else(|| article_name.clone()),
-        user_name,
-        rev_id: None,
-        new_name,
-    };
+    let article_name = new_title.as_deref().unwrap_or(&article_name);
+    let mut context = json! {{
+        "site_name": &cfg.site_name,
+        "main_page": article_name == "Main",
+        "article_name": article_name,
+        "user_name": user_name,
+        "rev_id": null,
+        "new_name": new_name,
+    }};
 
     if matches!(res, Err(Error::IdenticalNewRevision)) {
         // This is the case where we early return a success. Huh.
@@ -275,7 +255,7 @@ async fn edit_form(
             // TODO do we really want to return on error here?
             search_index.add_or_update_article(
                 article_id,
-                &context.article_name,
+                article_name,
                 &new_content,
                 Utc::now(),
             )?;
@@ -283,11 +263,15 @@ async fn edit_form(
         Ok(Template::render("article_edit_success", context))
     } else {
         let (rev_id, rev) = res?;
-        context.rev_id = Some(rev_id.rev_number());
+        context
+            .as_object_mut()
+            // This is ok since context is always an Object (see declaration)
+            .unwrap()
+            .insert("rev_id".into(), rev_id.rev_number().0.into());
         db.flush().await?;
         // Update the article's content and possibly its name, we don't care here.
         // TODO do we really want to return on error here?
-        search_index.add_or_update_article(article_id, &article_name, &new_content, rev.date)?;
+        search_index.add_or_update_article(article_id, article_name, &new_content, rev.date)?;
         Ok(Template::render("article_edit_success", context))
     }
 }
@@ -315,24 +299,16 @@ fn revs(
             let author = db.users.name_by_id(rev.author_id)?.unwrap_or_default();
             revs_with_author.push((id.rev_number(), rev, author));
         }
-        #[derive(serde::Serialize)]
-        struct RevsContext<'a> {
-            site_name: &'a str,
-            article_name: String,
-            user_name: Option<LoggedUserName>,
-            revs: Vec<(Id, RevisionMeta, String)>,
-            main_page: bool,
-        }
-        let context = RevsContext {
-            site_name: &cfg.site_name,
-            main_page: article_name == "Main",
-            article_name,
-            user_name,
-            revs: revs_with_author,
-        };
+        let context = json! {{
+            "site_name": &cfg.site_name,
+            "main_page": article_name == "Main",
+            "article_name": article_name,
+            "user_name": user_name,
+            "revs": revs_with_author,
+        }};
         Ok(Template::render("article_revs", context))
     } else {
-        render_404(&*cfg, &article_name, &user_name)
+        Ok(render_404(&*cfg, &article_name, &user_name))
     }
 }
 
@@ -350,12 +326,13 @@ fn rev(
         let rev_id = match db.articles.verified_rev_id(article_id, rev_id) {
             Ok(id) => id,
             Err(Error::RevisionUnknown(id)) => {
-                let mut context = Context::new();
-                context.insert("site_name", &cfg.site_name);
-                context.insert("article_name", &article_name);
-                context.insert("rev_number", &id.rev_number());
-                context.insert("user_name", &user_name);
-                return Ok(Template::render("article_404", context.into_json()));
+                let context = json! {{
+                    "site_name": &cfg.site_name,
+                    "article_name": &article_name,
+                    "rev_number": id.rev_number(),
+                    "user_name": &user_name,
+                }};
+                return Ok(Template::render("article_404", context));
             }
             Err(e) => return Err(e),
         };
@@ -377,6 +354,6 @@ fn rev(
         };
         Ok(Template::render("article", context))
     } else {
-        render_404(&*cfg, &article_name, &user_name)
+        Ok(render_404(&*cfg, &article_name, &user_name))
     }
 }

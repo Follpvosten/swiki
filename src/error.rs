@@ -134,20 +134,14 @@ impl<S> IntoOutcomeHack<S> for crate::Result<S> {
 
 impl<'r> Responder<'r, 'static> for Error {
     fn respond_to(self, request: &'r Request<'_>) -> response::Result<'static> {
-        #[derive(serde::Serialize)]
-        struct ErrorContext<'a> {
-            site_name: &'a str,
-            status: String,
-            error: String,
-        }
+        // If this doesn't return Some, we're dead anyways because the whole
+        // runtime was initialized in the wrong way
         let cfg: &crate::Config = request.managed_state().unwrap();
-        let status = self.status().to_string();
-        let error = self.to_string();
-        let context = ErrorContext {
-            site_name: &cfg.site_name,
-            status,
-            error,
-        };
+        let context = serde_json::json! {{
+            "site_name": &cfg.site_name,
+            "status": self.status().to_string(),
+            "error": self.to_string(),
+        }};
         Template::render("error", context).respond_to(request)
     }
 }
