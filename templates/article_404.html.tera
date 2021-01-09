@@ -6,9 +6,14 @@
     <hr>
     <section class="content">
       {% if rev_number %}
-      The requested revision <code>#{{ rev_number }}</code> does not exist.
-      You can <a href="/{{ article_name }}">go back to the article</a> or
-      to its <a href="/{{ article_name }}/revs">revision list</a> directly.
+      <p>
+        The requested revision <code>#{{ rev_number }}</code> does not exist.
+      </p>
+      <p>
+        You can <a href="/{{ article_name }}">go back to the article</a> to read
+        the current version or to its <a href="/{{ article_name }}/revs">revision list</a>
+        to look at its existing revisions.
+      </p>
       {% else %}
       This article doesn't exist yet. You can help extend {{ site_name }} by
       <a href="{{ article_name }}/edit">adding it!</a>

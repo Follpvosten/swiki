@@ -1,6 +1,6 @@
 {% extends "index" %}
 {% block extra_head %}
-<meta http-equiv="Refresh" content="5; url='/{{ article_name }}'" />
+<meta http-equiv="Refresh" content="3; url='/{{ article_name }}'" />
 {% endblock %}
 {% block body %}
 <section class="section">
