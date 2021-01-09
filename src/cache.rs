@@ -40,6 +40,14 @@ impl Cache {
         self.captcha_solution.remove(id.as_bytes())?;
         Ok(())
     }
+    #[cfg(test)]
+    pub fn get_solution(&self, id: Uuid) -> Result<String> {
+        Ok(self
+            .captcha_solution
+            .get(id.as_bytes())?
+            .map(|ivec| String::from_utf8(ivec.to_vec()).unwrap())
+            .unwrap())
+    }
 }
 
 #[cfg(test)]

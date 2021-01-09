@@ -32,3 +32,5 @@ features = ["tera_templates", "uuid"]
 
 [dev-dependencies]
 lipsum = "0.7"
+serde_urlencoded = "0.7"
+scraper = "0.12"

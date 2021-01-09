@@ -49,12 +49,9 @@ mod tests {
 
     use super::*;
 
-    /// Returns a memory-backed sled database.
-    fn sled_db() -> crate::Result<sled::Db> {
-        Ok(sled::Config::default().temporary(true).open()?)
-    }
     fn db() -> crate::Result<Db> {
-        Db::load_or_create(sled_db()?)
+        let sled_db = sled::Config::default().temporary(true).open()?;
+        Db::load_or_create(sled_db)
     }
 
     #[test]

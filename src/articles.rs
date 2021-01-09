@@ -1,6 +1,13 @@
 use chrono::Utc;
 use pulldown_cmark::{html, BrokenLink, Options, Parser};
-use rocket::{get, post, request::Form, response::Redirect, FromForm, Route, State};
+use rocket::{
+    get,
+    http::Status,
+    post,
+    request::Form,
+    response::{status, Redirect},
+    FromForm, Route, State,
+};
 use rocket_contrib::templates::Template;
 use serde_json::json;
 
@@ -27,13 +34,17 @@ pub fn routes() -> Vec<Route> {
     ]
 }
 
-fn render_404(cfg: &Config, article_name: &str, user_name: &Option<LoggedUserName>) -> Template {
+fn render_404(
+    cfg: &Config,
+    article_name: &str,
+    user_name: &Option<LoggedUserName>,
+) -> status::Custom<Template> {
     let context = json! {{
         "site_name": cfg.site_name,
         "article_name": article_name,
         "user_name": user_name,
     }};
-    Template::render("article_404", context)
+    status::Custom(Status::NotFound, Template::render("article_404", context))
 }
 
 fn markdown_to_html(input: &str) -> String {
@@ -104,7 +115,7 @@ fn get(
     cfg: State<Config>,
     article_name: String,
     user_name: Option<LoggedUserName>,
-) -> Result<Template> {
+) -> Result<status::Custom<Template>> {
     // TODO is this correct? Technically the inner option being none means we
     // got an unknown id from the database, which would be inconsistent data on
     // the server side, not a 404.
@@ -135,7 +146,10 @@ fn get(
             date,
             specific_rev: false,
         };
-        Ok(Template::render("article", context))
+        Ok(status::Custom(
+            Status::Ok,
+            Template::render("article", context),
+        ))
     } else {
         Ok(render_404(&*cfg, &article_name, &user_name))
     }
@@ -195,7 +209,7 @@ async fn edit_form(
     form: Form<AddRevRequest>,
     session: &UserSession,
     user_name: LoggedUserName,
-) -> Result<Template> {
+) -> Result<status::Custom<Template>> {
     // If it's an existing article, use its id; otherwise, create a new article.
     let (article_id, new_article) = match db.articles.id_by_name(&article_name)? {
         Some(id) => (id, false),
@@ -218,7 +232,10 @@ async fn edit_form(
                 new_article,
                 invalid_name_change: true,
             };
-            return Ok(Template::render("article_edit", context));
+            return Ok(status::Custom(
+                Status::BadRequest,
+                Template::render("article_edit", context),
+            ));
         } else if new_name != article_name {
             // Change the article's title
             // This would error if we tried to call it with the same name
@@ -260,7 +277,10 @@ async fn edit_form(
                 Utc::now(),
             )?;
         }
-        Ok(Template::render("article_edit_success", context))
+        Ok(status::Custom(
+            Status::Ok,
+            Template::render("article_edit_success", context),
+        ))
     } else {
         let (rev_id, rev) = res?;
         context
@@ -272,7 +292,10 @@ async fn edit_form(
         // Update the article's content and possibly its name, we don't care here.
         // TODO do we really want to return on error here?
         search_index.add_or_update_article(article_id, article_name, &new_content, rev.date)?;
-        Ok(Template::render("article_edit_success", context))
+        Ok(status::Custom(
+            Status::Ok,
+            Template::render("article_edit_success", context),
+        ))
     }
 }
 
@@ -291,7 +314,7 @@ fn revs(
     cfg: State<Config>,
     article_name: String,
     user_name: Option<LoggedUserName>,
-) -> Result<Template> {
+) -> Result<status::Custom<Template>> {
     if let Some(id) = db.articles.id_by_name(&article_name)? {
         let revs = db.articles.list_revisions(id)?;
         let mut revs_with_author = Vec::with_capacity(revs.len());
@@ -306,7 +329,10 @@ fn revs(
             "user_name": user_name,
             "revs": revs_with_author,
         }};
-        Ok(Template::render("article_revs", context))
+        Ok(status::Custom(
+            Status::Ok,
+            Template::render("article_revs", context),
+        ))
     } else {
         Ok(render_404(&*cfg, &article_name, &user_name))
     }
@@ -321,7 +347,7 @@ fn rev(
     article_name: String,
     rev_id: Id,
     user_name: Option<LoggedUserName>,
-) -> Result<Template> {
+) -> Result<status::Custom<Template>> {
     if let Some(article_id) = db.articles.id_by_name(&article_name)? {
         let rev_id = match db.articles.verified_rev_id(article_id, rev_id) {
             Ok(id) => id,
@@ -332,7 +358,10 @@ fn rev(
                     "rev_number": id.rev_number(),
                     "user_name": &user_name,
                 }};
-                return Ok(Template::render("article_404", context));
+                return Ok(status::Custom(
+                    Status::NotFound,
+                    Template::render("article_404", context),
+                ));
             }
             Err(e) => return Err(e),
         };
@@ -352,7 +381,10 @@ fn rev(
             date,
             specific_rev: true,
         };
-        Ok(Template::render("article", context))
+        Ok(status::Custom(
+            Status::Ok,
+            Template::render("article", context),
+        ))
     } else {
         Ok(render_404(&*cfg, &article_name, &user_name))
     }

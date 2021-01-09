@@ -105,13 +105,23 @@ async fn register_page(cfg: State<'_, Config>, cache: State<'_, Cache>) -> Resul
     };
     Ok(Template::render("register", context))
 }
+
+#[cfg(test)]
+fn serialize_uuid<S: serde::Serializer>(
+    value: &RocketUuid,
+    s: S,
+) -> std::result::Result<S::Ok, S::Error> {
+    s.serialize_str(&value.to_string())
+}
 #[derive(FromForm)]
-struct RegisterRequest {
-    username: String,
-    password: String,
-    pwd_confirm: String,
-    captcha_id: RocketUuid,
-    captcha_solution: String,
+#[cfg_attr(test, derive(serde::Serialize))]
+pub(crate) struct RegisterRequest {
+    pub(crate) username: String,
+    pub(crate) password: String,
+    pub(crate) pwd_confirm: String,
+    #[cfg_attr(test, serde(serialize_with = "serialize_uuid"))]
+    pub(crate) captcha_id: RocketUuid,
+    pub(crate) captcha_solution: String,
 }
 #[post("/register", data = "<form>")]
 async fn register_form(
@@ -176,9 +186,10 @@ fn login_page(cfg: State<Config>) -> Template {
     Template::render("login", context)
 }
 #[derive(FromForm)]
-struct LoginRequest {
-    username: String,
-    password: String,
+#[cfg_attr(test, derive(serde::Serialize))]
+pub(crate) struct LoginRequest {
+    pub(crate) username: String,
+    pub(crate) password: String,
 }
 #[post("/login", data = "<form>")]
 async fn login_form(
