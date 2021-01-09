@@ -118,6 +118,9 @@ fn verify_password(hash: &str, password: &str) -> StdResult<bool, argon2::Error>
 }
 
 impl Users {
+    pub fn name_exists(&self, username: &str) -> Result<bool> {
+        Ok(self.username_userid.contains_key(username.as_bytes())?)
+    }
     pub fn id_by_name(&self, username: &str) -> Result<Option<UserId>> {
         Ok(self
             .username_userid
@@ -197,9 +200,5 @@ impl Users {
             .get(session_id.as_bytes())?
             .map(|ivec| Id::from_bytes(&ivec).map(UserId))
             .transpose()
-    }
-
-    pub fn name_exists(&self, username: &str) -> Result<bool> {
-        Ok(self.username_userid.contains_key(username.as_bytes())?)
     }
 }

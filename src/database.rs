@@ -50,12 +50,11 @@ mod tests {
     use super::*;
 
     /// Returns a memory-backed sled database.
-    fn sled_db() -> sled::Db {
-        use sled::Config;
-        Config::default().temporary(true).open().unwrap()
+    fn sled_db() -> crate::Result<sled::Db> {
+        Ok(sled::Config::default().temporary(true).open()?)
     }
     fn db() -> crate::Result<Db> {
-        Db::load_or_create(sled_db())
+        Db::load_or_create(sled_db()?)
     }
 
     #[test]
@@ -64,16 +63,28 @@ mod tests {
     }
 
     #[test]
-    fn register_user_verify_password() -> crate::Result<()> {
+    fn register_and_login() -> crate::Result<()> {
         let db = db()?;
         let username = "someone";
         let password = "hunter2";
         let user_id = db.users.register(&username, &password)?;
         let user2_id = db.users.register("username", "password")?;
         // Make sure the user exists now
-        assert!(db.users.name_by_id(user_id)?.is_some());
-        // Verifying a correct password returns true
-        assert!(db.users.try_login(user_id, password)?.is_some());
+        assert!(db.users.name_exists(username)?);
+        assert_eq!(db.users.id_by_name(username)?, Some(user_id));
+        assert_eq!(db.users.name_by_id(user_id)?.as_deref(), Some(username));
+        // Verifying a correct password creates a session
+        let session = db
+            .users
+            .try_login(user_id, password)?
+            .expect("Correct user_id and password should yield a session");
+        // The session's id should be enough to get back the user id
+        assert_eq!(
+            db.users.get_session_user(session.session_id)?,
+            Some(session.user_id)
+        );
+        // Destroy the session again
+        assert!(db.users.destroy_session(session.session_id).is_ok());
         // Verifying a wrong password returns false
         assert!(db.users.try_login(user_id, "password123")?.is_none());
         // Verifying the wrong user returns false
@@ -84,7 +95,7 @@ mod tests {
     }
 
     #[test]
-    fn create_article_and_revisions() -> crate::Result<()> {
+    fn create_article_and_revision() -> crate::Result<()> {
         let db = db()?;
         let article_name = "MainPage";
         let author_id = db.users.register("username", "password")?;
@@ -94,7 +105,19 @@ This is a **fun** Article with some minimal *Markdown* in it.
 
         // Create our article
         let article_id = db.articles.create(article_name)?;
-        // Store it first
+        // Verify it exists now
+        assert!(db.articles.name_exists(article_name)?);
+        assert_eq!(db.articles.id_by_name(article_name)?, Some(article_id));
+        assert_eq!(
+            db.articles.name_by_id(article_id)?.as_deref(),
+            Some(article_name)
+        );
+        // ...but it doesn't have any revisions yet
+        assert_eq!(db.articles.list_revisions(article_id)?.len(), 0);
+        // meaning trying to get the current content or revision doesn't return anything
+        assert_eq!(db.articles.get_current_content(article_id)?, None);
+        assert_eq!(db.articles.get_current_revision(article_id)?, None);
+        // After checking for all of that, we add our first revision
         let (rev_id, rev) = db.articles.add_revision(article_id, author_id, content)?;
         // Verify it's now also the current revision
         assert_eq!(
@@ -188,6 +211,55 @@ Something [Link](Links) to something else. New content. Ha ha ha."#;
         assert_eq!(
             rev3_id,
             db.articles.get_current_revision(article_id)?.unwrap().0
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn query_specific_revisions() -> crate::Result<()> {
+        // Basic setup
+        let db = db()?;
+        let article_name = "MainPage";
+        let article_id = db.articles.create(article_name)?;
+        let user_id = db.users.register("user1", "password123")?;
+
+        // Store some revisions
+        let (rev1_id, rev1_meta) = db.articles.add_revision(article_id, user_id, "abc")?;
+        let (rev2_id, _) = db.articles.add_revision(article_id, user_id, "123")?;
+        let (rev3_id, rev3_meta) = db.articles.add_revision(article_id, user_id, "abc123")?;
+
+        // We now query them and then check if they match with what we know
+        let rev1 = db.articles.get_revision(rev1_id)?;
+        assert_eq!(rev1.content.as_str(), "abc");
+        assert_eq!(rev1.author_id, rev1_meta.author_id);
+        assert_eq!(rev1.author_id, user_id);
+        assert_eq!(rev1.date, rev1_meta.date);
+
+        // Maybe we don't need the whole info about the revision, possibly we
+        // already know the author_id; query only the missing information.
+        let rev2_content = db.articles.get_rev_content(rev2_id)?;
+        assert_eq!(rev2_content.as_str(), "123");
+        // We can't compare this to anything, but it should be there, right?
+        db.articles
+            .get_rev_date(rev2_id)
+            .expect("Date should be there");
+
+        // We may also just not care about specific revisions, we may just want the current one.
+        let (curr_rev_id, curr_rev) = db
+            .articles
+            .get_current_revision(article_id)?
+            .expect("article should have revisions");
+        assert_eq!(curr_rev_id, rev3_id);
+        assert_eq!(curr_rev.content.as_str(), "abc123");
+        assert_eq!(curr_rev.author_id, rev3_meta.author_id);
+        assert_eq!(curr_rev.author_id, user_id);
+        assert_eq!(curr_rev.date, rev3_meta.date);
+        // The current content can also be queried separately.
+        // This is currently used on the edit page.
+        assert_eq!(
+            db.articles.get_current_content(article_id)?,
+            Some(curr_rev.content)
         );
 
         Ok(())

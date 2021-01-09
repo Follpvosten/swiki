@@ -51,6 +51,9 @@ pub struct RevisionMeta {
 }
 
 impl Articles {
+    pub fn name_exists(&self, name: &str) -> Result<bool> {
+        Ok(self.articlename_id.contains_key(name.as_bytes())?)
+    }
     pub fn id_by_name(&self, name: &str) -> Result<Option<ArticleId>> {
         self.articlename_id
             .get(name.as_bytes())?
@@ -62,9 +65,6 @@ impl Articles {
             .articleid_name
             .get(&id.to_bytes())?
             .map(|ivec| String::from_utf8(ivec.to_vec()).unwrap()))
-    }
-    pub fn name_exists(&self, name: &str) -> Result<bool> {
-        Ok(self.articlename_id.contains_key(name.as_bytes())?)
     }
     pub fn list_articles(&self) -> Result<Vec<ArticleId>> {
         self.articleid_name

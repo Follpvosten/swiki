@@ -275,3 +275,22 @@ fn profile(
 ) -> Result<Template> {
     todo!()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::generate_captcha;
+
+    #[test]
+    fn captcha_generation() {
+        // Do it 5 times to be sure.
+        for _ in 0..5 {
+            let (solution, base64) = generate_captcha().expect("captcha generation failed");
+            // Check if it's valid base64
+            assert!(base64::decode(&base64).is_ok());
+            // We always call add_chars(5)
+            assert_eq!(solution.len(), 5);
+            // And I'm pretty sure it should only do alphanumerical characters
+            assert!(solution.chars().all(|c| c.is_ascii_alphanumeric()));
+        }
+    }
+}
