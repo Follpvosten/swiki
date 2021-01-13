@@ -18,8 +18,15 @@ pub struct Users {
     pub(super) username_userid: Tree,
     pub(super) userid_username: Tree,
     pub(super) userid_password: Tree,
+    pub(super) userid_flag_value: Tree,
+    // TODO implement
+    #[allow(dead_code)]
     pub(super) userid_email: Tree,
     pub(super) sessionid_userid: Tree,
+}
+
+mod flags {
+    pub const ADMIN: &[u8] = b"admin";
 }
 
 /// Strongly typed user id. The inner type is pub(super) because you should
@@ -77,9 +84,18 @@ impl<'a, 'r> FromRequest<'a, 'r> for &'a UserSession {
 }
 
 #[derive(serde::Serialize)]
-pub struct LoggedUserName(pub String);
+pub struct LoggedUser {
+    id: UserId,
+    name: String,
+    is_admin: bool,
+}
+impl LoggedUser {
+    pub fn is_admin(&self) -> bool {
+        self.is_admin
+    }
+}
 #[rocket::async_trait]
-impl<'a, 'r> FromRequest<'a, 'r> for LoggedUserName {
+impl<'a, 'r> FromRequest<'a, 'r> for LoggedUser {
     type Error = Error;
 
     async fn from_request(request: &'a Request<'r>) -> Outcome<Self, Self::Error> {
@@ -90,10 +106,36 @@ impl<'a, 'r> FromRequest<'a, 'r> for LoggedUserName {
         // Get a handle on the db
         let db: &Db = try_outcome!(request.managed_state().or_forward(()));
         // Finally, get the user's name
-        let user_name: Option<String> =
+        let name: Option<String> =
             try_outcome!(db.users.name_by_id(session.user_id).into_outcome_hack());
+        let is_admin: bool = try_outcome!(db.users.is_admin(session.user_id).into_outcome_hack());
         // Wrap it in a LoggedUserName and return it
-        user_name.map(LoggedUserName).or_forward(())
+        name.map(|name| LoggedUser {
+            id: session.user_id,
+            name,
+            is_admin,
+        })
+        .or_forward(())
+    }
+}
+
+#[derive(serde::Serialize)]
+pub struct LoggedAdmin {
+    id: UserId,
+    name: String,
+}
+#[rocket::async_trait]
+impl<'a, 'r> FromRequest<'a, 'r> for LoggedAdmin {
+    type Error = Error;
+
+    async fn from_request(request: &'a Request<'r>) -> Outcome<Self, Self::Error> {
+        let logged_user: LoggedUser = try_outcome!(request.guard().await);
+        if logged_user.is_admin {
+            let LoggedUser { id, name, .. } = logged_user;
+            Outcome::Success(LoggedAdmin { id, name })
+        } else {
+            Outcome::Forward(())
+        }
     }
 }
 
@@ -151,11 +193,16 @@ impl Users {
             &self.username_userid,
             &self.userid_username,
             &self.userid_password,
+            &self.userid_flag_value,
         )
-            .transaction(|(name_id, id_name, id_password)| {
+            .transaction(|(name_id, id_name, id_password, id_flag_val)| {
                 use sled::transaction::ConflictableTransactionError::Abort;
                 name_id.insert(username.as_bytes(), &id.to_bytes())?;
                 id_name.insert(&id.to_bytes(), username.as_bytes())?;
+
+                // If this is the first user, make them an admin
+                let admin_key = [&id.to_bytes(), flags::ADMIN].concat();
+                id_flag_val.insert(admin_key, &[(id.0 .0 == 1) as u8])?;
 
                 let password_hashed = hash_password(password)
                     .map_err(Error::from)
@@ -200,5 +247,19 @@ impl Users {
             .get(session_id.as_bytes())?
             .map(|ivec| Id::from_bytes(&ivec).map(UserId))
             .transpose()
+    }
+
+    pub fn is_admin(&self, user_id: UserId) -> Result<bool> {
+        let key = [&user_id.to_bytes(), flags::ADMIN].concat();
+        Ok(self
+            .userid_flag_value
+            .get(key)?
+            .map(|ivec| ivec[0] != 0)
+            .unwrap_or(false))
+    }
+    pub fn set_is_admin(&self, user_id: UserId, is_admin: bool) -> Result<()> {
+        let key = [&user_id.to_bytes(), flags::ADMIN].concat();
+        self.userid_flag_value.insert(key, &[is_admin as u8])?;
+        Ok(())
     }
 }

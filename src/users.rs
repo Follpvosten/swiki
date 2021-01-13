@@ -12,7 +12,10 @@ use uuid::Uuid;
 use zeroize::Zeroize;
 
 use crate::{
-    database::users::{LoggedUserName, UserSession},
+    database::{
+        users::{LoggedUser, UserSession},
+        EnabledRegistration,
+    },
     Cache, Config, Db, Error, Result,
 };
 
@@ -21,7 +24,10 @@ pub fn routes() -> Vec<rocket::Route> {
         profile,
         register_redirect,
         register_page,
+        register_redirect_always,
+        register_post_redirect,
         register_form,
+        register_post_redirect_always,
         login_redirect,
         login_page,
         login_form,
@@ -93,7 +99,11 @@ fn register_redirect(_session: &UserSession) -> Redirect {
     Redirect::to("/Main")
 }
 #[get("/register", rank = 2)]
-async fn register_page(cfg: State<'_, Config>, cache: State<'_, Cache>) -> Result<Template> {
+async fn register_page(
+    cfg: State<'_, Config>,
+    cache: State<'_, Cache>,
+    _er: EnabledRegistration,
+) -> Result<Template> {
     // TODO handle already logged in state
     // Generate a captcha to include in the login form
     let (id, base64) = gen_captcha_and_id(&*cache).await?;
@@ -104,6 +114,11 @@ async fn register_page(cfg: State<'_, Config>, cache: State<'_, Cache>) -> Resul
         ..Default::default()
     };
     Ok(Template::render("register", context))
+}
+// Redirect in all other cases (= registration disabled)
+#[get("/register", rank = 3)]
+fn register_redirect_always() -> Redirect {
+    Redirect::to("/Main")
 }
 
 #[cfg(test)]
@@ -123,12 +138,17 @@ pub(crate) struct RegisterRequest {
     pub(crate) captcha_id: RocketUuid,
     pub(crate) captcha_solution: String,
 }
-#[post("/register", data = "<form>")]
+#[post("/register")]
+fn register_post_redirect(_session: &UserSession) -> Redirect {
+    Redirect::to("/Main")
+}
+#[post("/register", data = "<form>", rank = 2)]
 async fn register_form(
     cfg: State<'_, Config>,
     db: State<'_, Db>,
     cache: State<'_, Cache>,
     form: Form<RegisterRequest>,
+    _er: EnabledRegistration,
 ) -> Result<Template> {
     let RegisterRequest {
         username,
@@ -171,6 +191,10 @@ async fn register_form(
     db.flush().await?;
     // Return some success messag
     Ok(Template::render("register_success", &*cfg))
+}
+#[post("/register", rank = 3)]
+fn register_post_redirect_always() -> Redirect {
+    Redirect::to("/Main")
 }
 
 #[get("/login")]
@@ -236,12 +260,13 @@ async fn login_form(
             base64::encode(session.session_id.as_bytes()),
         ));
         // TODO: Do we also auto-login on registrations?
-        // Just realized that this is a hack: A field "username" in the
-        // context is only used by the "login" template, while user_name
-        // would cause the top bar to wrongly show a logged-in user.
+        let is_admin = db.users.is_admin(user_id)?;
         let context = json! {{
             "site_name": &cfg.site_name,
-            "user_name": &username,
+            "user": {
+                "name": &username,
+                "is_admin": is_admin,
+            },
         }};
         Ok(Template::render("login_success", context))
     } else {
@@ -278,12 +303,8 @@ fn logout_redirect(cookies: &CookieJar<'_>) -> Redirect {
     Redirect::to("/Main")
 }
 
-#[get("/<_username>", rank = 3)]
-fn profile(
-    _db: State<Db>,
-    _username: String,
-    _user_name: Option<LoggedUserName>,
-) -> Result<Template> {
+#[get("/<_username>", rank = 4)]
+fn profile(_db: State<Db>, _username: String, _user: Option<LoggedUser>) -> Result<Template> {
     todo!()
 }
 

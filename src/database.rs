@@ -6,12 +6,40 @@ pub use id::Id;
 pub mod articles;
 use articles::Articles;
 pub mod users;
+use rocket::{
+    request::{FromRequest, Outcome},
+    try_outcome, Request,
+};
 use users::Users;
 
 pub struct Db {
     pub users: Users,
     pub articles: Articles,
+    settings: sled::Tree,
     inner: sled::Db,
+}
+
+/// Settings keys
+mod keys {
+    pub const REGISTRATION_ENABLED: &[u8] = b"global:registration_enabled";
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EnabledRegistration;
+#[rocket::async_trait]
+impl<'a, 'r> FromRequest<'a, 'r> for EnabledRegistration {
+    type Error = crate::Error;
+
+    async fn from_request(request: &'a Request<'r>) -> Outcome<Self, Self::Error> {
+        use crate::error::IntoOutcomeHack;
+        use rocket::outcome::IntoOutcome;
+        let db: &Db = try_outcome!(request.managed_state().or_forward(()));
+        if try_outcome!(db.registration_enabled().into_outcome_hack()) {
+            Outcome::Success(EnabledRegistration)
+        } else {
+            Outcome::Forward(())
+        }
+    }
 }
 
 impl Db {
@@ -21,6 +49,7 @@ impl Db {
                 username_userid: db.open_tree("username_userid")?,
                 userid_username: db.open_tree("userid_username")?,
                 userid_password: db.open_tree("userid_password")?,
+                userid_flag_value: db.open_tree("userid_flag_value")?,
                 userid_email: db.open_tree("userid_email")?,
                 sessionid_userid: db.open_tree("sessionid_userid")?,
             },
@@ -31,8 +60,23 @@ impl Db {
                 revid_author: db.open_tree("revid_author")?,
                 revid_date: db.open_tree("revid_date")?,
             },
+            settings: db.open_tree("settings")?,
             inner: db,
         })
+    }
+
+    pub fn registration_enabled(&self) -> Result<bool> {
+        let value = self
+            .settings
+            .get(keys::REGISTRATION_ENABLED)?
+            .map(|ivec| ivec[0] != 0)
+            .unwrap_or(true);
+        Ok(value)
+    }
+    pub fn set_registration_enabled(&self, value: bool) -> Result<()> {
+        self.settings
+            .insert(keys::REGISTRATION_ENABLED, &[value as u8])?;
+        Ok(())
     }
 
     /// Invoke flush_async().await on the internal database to sync

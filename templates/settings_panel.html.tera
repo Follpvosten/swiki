@@ -1,0 +1,29 @@
+{% extends "index" %}
+{% block body %}
+<section class="section">
+  <div class="container">
+    <h1 class="title is-3">Settings</h1>
+    <hr>
+    <h2 class="title is-4">User settings</h2>
+    <p>
+      There are no user settings as of yet. You will be able to create API keys here soon.
+    </p>
+    {% if user.is_admin %}
+    <hr>
+    <h2 class="title is-4">Admin area</h2>
+    <form action="/settings/admin" method="POST">
+      <p>
+        <label class="checkbox">
+          <input {% if registration_enabled %}checked{% endif %} type="checkbox" value="true"
+            name="registration_enabled">
+          Enable registration
+        </label>
+      </p>
+      <p>
+        <input class="button" type="submit" value="Save">
+      </p>
+    </form>
+    {% endif %}
+  </div>
+</section>
+{% endblock body %}

@@ -14,7 +14,7 @@ use serde_json::json;
 use crate::{
     database::{
         articles::Revision,
-        users::{LoggedUserName, UserSession},
+        users::{LoggedUser, UserSession},
         Db, Id,
     },
     ArticleIndex, Config, Error, Result,
@@ -37,12 +37,12 @@ pub fn routes() -> Vec<Route> {
 fn render_404(
     cfg: &Config,
     article_name: &str,
-    user_name: &Option<LoggedUserName>,
+    user: &Option<LoggedUser>,
 ) -> status::Custom<Template> {
     let context = json! {{
         "site_name": cfg.site_name,
         "article_name": article_name,
-        "user_name": user_name,
+        "user": user,
     }};
     status::Custom(Status::NotFound, Template::render("article_404", context))
 }
@@ -71,7 +71,7 @@ fn markdown_to_html(input: &str) -> String {
 struct RevContext<'a> {
     site_name: &'a str,
     article_name: String,
-    user_name: Option<LoggedUserName>,
+    user: Option<LoggedUser>,
     rev_id: Id,
     content: String,
     author: String,
@@ -85,7 +85,7 @@ fn search(
     db: State<Db>,
     cfg: State<Config>,
     index: State<ArticleIndex>,
-    user_name: Option<LoggedUserName>,
+    user: Option<LoggedUser>,
     q: String,
 ) -> Result<Template> {
     let context = json! {{
@@ -93,18 +93,18 @@ fn search(
         "results": index.search_by_text(&q)?,
         "site_name": &cfg.site_name,
         "page_name": "Search",
-        "user_name": user_name,
+        "user": user,
         "query": q,
     }};
     Ok(Template::render("search", context))
 }
 
 #[get("/create", rank = -20)]
-fn create(cfg: State<Config>, user_name: Option<LoggedUserName>) -> Template {
+fn create(cfg: State<Config>, user: Option<LoggedUser>) -> Template {
     let context = json! {{
         "site_name": &cfg.site_name,
         "page_name": "New Article",
-        "user_name": user_name,
+        "user": user,
     }};
     Template::render("article_create", context)
 }
@@ -114,7 +114,7 @@ fn get(
     db: State<Db>,
     cfg: State<Config>,
     article_name: String,
-    user_name: Option<LoggedUserName>,
+    user: Option<LoggedUser>,
 ) -> Result<status::Custom<Template>> {
     // TODO is this correct? Technically the inner option being none means we
     // got an unknown id from the database, which would be inconsistent data on
@@ -140,7 +140,7 @@ fn get(
             author: db.users.name_by_id(author_id)?.unwrap_or_default(),
             main_page: article_name == "Main",
             article_name,
-            user_name,
+            user,
             rev_id: rev_id.rev_number(),
             content: markdown_to_html(&content),
             date,
@@ -151,7 +151,7 @@ fn get(
             Template::render("article", context),
         ))
     } else {
-        Ok(render_404(&*cfg, &article_name, &user_name))
+        Ok(render_404(&*cfg, &article_name, &user))
     }
 }
 
@@ -159,7 +159,7 @@ fn get(
 struct NewRevContext<'a> {
     site_name: &'a str,
     article_name: String,
-    user_name: LoggedUserName,
+    user: LoggedUser,
     old_content: String,
     main_page: bool,
     new_article: bool,
@@ -171,7 +171,7 @@ fn edit_page(
     cfg: State<Config>,
     article_name: String,
     // This route will only be called when a user is logged in.
-    user_name: LoggedUserName,
+    user: LoggedUser,
 ) -> Result<Template> {
     // For a new article, the only difference is the content being empty string.
     let (old_content, new_article) = match db.articles.id_by_name(&article_name)? {
@@ -188,7 +188,7 @@ fn edit_page(
         site_name: &cfg.site_name,
         main_page: article_name == "Main",
         article_name,
-        user_name,
+        user,
         old_content,
         new_article,
         invalid_name_change: false,
@@ -208,7 +208,7 @@ async fn edit_form(
     article_name: String,
     form: Form<AddRevRequest>,
     session: &UserSession,
-    user_name: LoggedUserName,
+    user: LoggedUser,
 ) -> Result<status::Custom<Template>> {
     // If it's an existing article, use its id; otherwise, create a new article.
     let (article_id, new_article) = match db.articles.id_by_name(&article_name)? {
@@ -227,7 +227,7 @@ async fn edit_form(
                 site_name: &cfg.site_name,
                 main_page: article_name == "Main",
                 article_name,
-                user_name,
+                user,
                 old_content: new_content,
                 new_article,
                 invalid_name_change: true,
@@ -257,7 +257,7 @@ async fn edit_form(
         "site_name": &cfg.site_name,
         "main_page": article_name == "Main",
         "article_name": article_name,
-        "user_name": user_name,
+        "user": user,
         "rev_id": null,
         "new_name": new_name,
     }};
@@ -276,6 +276,8 @@ async fn edit_form(
                 &new_content,
                 Utc::now(),
             )?;
+            // Make sure the new name is saved
+            db.flush().await?;
         }
         Ok(status::Custom(
             Status::Ok,
@@ -313,7 +315,7 @@ fn revs(
     db: State<Db>,
     cfg: State<Config>,
     article_name: String,
-    user_name: Option<LoggedUserName>,
+    user: Option<LoggedUser>,
 ) -> Result<status::Custom<Template>> {
     if let Some(id) = db.articles.id_by_name(&article_name)? {
         let revs = db.articles.list_revisions(id)?;
@@ -326,7 +328,7 @@ fn revs(
             "site_name": &cfg.site_name,
             "main_page": article_name == "Main",
             "article_name": article_name,
-            "user_name": user_name,
+            "user": user,
             "revs": revs_with_author,
         }};
         Ok(status::Custom(
@@ -334,7 +336,7 @@ fn revs(
             Template::render("article_revs", context),
         ))
     } else {
-        Ok(render_404(&*cfg, &article_name, &user_name))
+        Ok(render_404(&*cfg, &article_name, &user))
     }
 }
 
@@ -346,7 +348,7 @@ fn rev(
     cfg: State<Config>,
     article_name: String,
     rev_id: Id,
-    user_name: Option<LoggedUserName>,
+    user: Option<LoggedUser>,
 ) -> Result<status::Custom<Template>> {
     if let Some(article_id) = db.articles.id_by_name(&article_name)? {
         let rev_id = match db.articles.verified_rev_id(article_id, rev_id) {
@@ -354,9 +356,9 @@ fn rev(
             Err(Error::RevisionUnknown(id)) => {
                 let context = json! {{
                     "site_name": &cfg.site_name,
-                    "article_name": &article_name,
+                    "article_name": article_name,
                     "rev_number": id.rev_number(),
-                    "user_name": &user_name,
+                    "user": user,
                 }};
                 return Ok(status::Custom(
                     Status::NotFound,
@@ -375,7 +377,7 @@ fn rev(
             author: db.users.name_by_id(author_id)?.unwrap_or_default(),
             main_page: article_name == "Main",
             article_name,
-            user_name,
+            user,
             rev_id: rev_id.rev_number(),
             content: markdown_to_html(&content),
             date,
@@ -386,6 +388,6 @@ fn rev(
             Template::render("article", context),
         ))
     } else {
-        Ok(render_404(&*cfg, &article_name, &user_name))
+        Ok(render_404(&*cfg, &article_name, &user))
     }
 }

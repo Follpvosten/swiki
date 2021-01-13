@@ -21,6 +21,7 @@ type Result<T> = std::result::Result<T, Error>;
 
 // Route modules
 mod articles;
+mod settings;
 mod users;
 
 #[rocket::get("/")]
@@ -60,6 +61,7 @@ fn rocket(db: Db) -> Result<rocket::Rocket> {
         .mount("/", rocket::routes![index])
         .mount("/", articles::routes())
         .mount("/u", users::routes())
+        .mount("/settings", settings::routes())
         .mount("/res", StaticFiles::from("static"))
         .manage(ArticleIndex::new(&db)?)
         .manage(Cache::new()?)

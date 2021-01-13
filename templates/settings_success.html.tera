@@ -1,0 +1,22 @@
+{% extends "index" %}
+{% block extra_head %}
+<meta http-equiv="Refresh" content="3; url='/settings'" />
+{% endblock %}
+{% block body %}
+<section class="section">
+  <div class="container">
+    {% if changed %}
+    <h1 class="title">Success!</h1>
+    <p>
+      Your settings were updated successfully. You will be redirected back to
+      your settings page.
+    </p>
+    {% else %}
+    <h1 class="title">Nothing happened!</h1>
+    <p>
+      We didn't get any changed settings. You will be redirected shortly.
+    </p>
+    {% endif %}
+  </div>
+</section>
+{% endblock body %}
