@@ -106,16 +106,14 @@ impl<'a, 'r> FromRequest<'a, 'r> for LoggedUser {
         // Get a handle on the db
         let db: &Db = try_outcome!(request.managed_state().or_forward(()));
         // Finally, get the user's name
-        let name: Option<String> =
-            try_outcome!(db.users.name_by_id(session.user_id).into_outcome_hack());
+        let name: String = try_outcome!(db.users.name_by_id(session.user_id).into_outcome_hack());
         let is_admin: bool = try_outcome!(db.users.is_admin(session.user_id).into_outcome_hack());
         // Wrap it in a LoggedUserName and return it
-        name.map(|name| LoggedUser {
+        Outcome::Success(LoggedUser {
             id: session.user_id,
             name,
             is_admin,
         })
-        .or_forward(())
     }
 }
 
@@ -156,9 +154,11 @@ fn verify_password(hash: &str, password: &str) -> StdResult<bool, argon2::Error>
 }
 
 impl Users {
+    /// Simply checks if the given username is known to the database.
     pub fn name_exists(&self, username: &str) -> Result<bool> {
         Ok(self.username_userid.contains_key(username.as_bytes())?)
     }
+    /// Get the UserId for the given username if it is known.
     pub fn id_by_name(&self, username: &str) -> Result<Option<UserId>> {
         Ok(self
             .username_userid
@@ -166,14 +166,20 @@ impl Users {
             .map(|ivec| ivec.as_ref().try_into().map(UserId))
             .transpose()?)
     }
-    pub fn name_by_id(&self, user_id: UserId) -> Result<Option<String>> {
-        Ok(self
-            .userid_username
+    /// Get the username for the given UserId. Will return an error
+    /// if the id is unknown because UserIds can be assumed to be valid.
+    pub fn name_by_id(&self, user_id: UserId) -> Result<String> {
+        self.userid_username
             .get(user_id.to_bytes())?
-            .map(|ivec| String::from_utf8(ivec.to_vec()).unwrap()))
+            .map(|ivec| String::from_utf8(ivec.to_vec()).unwrap())
+            .ok_or(Error::UserDataInconsistent(user_id))
     }
 
     // TODO Email
+    /// Attempts to register a new user with the given password.
+    /// This is a heavy operation due to the password being hashed.
+    /// It also affects four different sled trees, so this is most likely
+    /// the most complicated transaction in the codebase at this moment.
     pub fn register(&self, username: &str, password: &str) -> Result<UserId> {
         if self.username_userid.contains_key(username.as_bytes())? {
             return Err(Error::UserAlreadyExists(username.to_string()));
@@ -209,6 +215,9 @@ impl Users {
         Ok(id)
     }
 
+    /// Attempts to create a new session for the given user.
+    /// Will return Ok(None) when password verification fails.
+    /// This is a heavy operation due to the password hash being verified.
     pub fn try_login(&self, user_id: UserId, password: &str) -> Result<Option<UserSession>> {
         let hash = self
             .userid_password
@@ -225,7 +234,6 @@ impl Users {
             Ok(None)
         }
     }
-
     fn create_session(&self, user_id: UserId) -> Result<Uuid> {
         let session_id = Uuid::new_v4();
         self.sessionid_userid
@@ -233,11 +241,13 @@ impl Users {
         Ok(session_id)
     }
 
+    /// Logs out a user by deleting the given session id.
     pub fn destroy_session(&self, session_id: Uuid) -> Result<()> {
         self.sessionid_userid.remove(session_id.as_bytes())?;
         Ok(())
     }
 
+    /// Returns the user logged in with the given session id, if any.
     pub fn get_session_user(&self, session_id: Uuid) -> Result<Option<UserId>> {
         self.sessionid_userid
             .get(session_id.as_bytes())?
@@ -245,6 +255,7 @@ impl Users {
             .transpose()
     }
 
+    /// Checks if the given user has admin privileges.
     pub fn is_admin(&self, user_id: UserId) -> Result<bool> {
         let key = [&user_id.to_bytes(), flags::ADMIN].concat();
         Ok(self
@@ -253,6 +264,7 @@ impl Users {
             .map(|ivec| ivec[0] != 0)
             .unwrap_or(false))
     }
+    /// Updates whether the given user has admin privileges.
     pub fn set_is_admin(&self, user_id: UserId, is_admin: bool) -> Result<()> {
         let key = [&user_id.to_bytes(), flags::ADMIN].concat();
         self.userid_flag_value.insert(key, &[is_admin as u8])?;

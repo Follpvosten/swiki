@@ -113,7 +113,7 @@ mod tests {
         // Make sure the user exists now
         assert!(db.users.name_exists(username)?);
         assert_eq!(db.users.id_by_name(username)?, Some(user_id));
-        assert_eq!(db.users.name_by_id(user_id)?.as_deref(), Some(username));
+        assert_eq!(db.users.name_by_id(user_id)?.as_str(), username);
         // Verifying a correct password creates a session
         let session = db
             .users
@@ -149,10 +149,7 @@ This is a **fun** Article with some minimal *Markdown* in it.
         // Verify it exists now
         assert!(db.articles.name_exists(article_name)?);
         assert_eq!(db.articles.id_by_name(article_name)?, Some(article_id));
-        assert_eq!(
-            db.articles.name_by_id(article_id)?.as_deref(),
-            Some(article_name)
-        );
+        assert_eq!(db.articles.name_by_id(article_id)?.as_str(), article_name);
         // ...but it doesn't have any revisions yet
         assert_eq!(db.articles.list_revisions(article_id)?.len(), 0);
         // meaning trying to get the current content or revision doesn't return anything

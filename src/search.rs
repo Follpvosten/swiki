@@ -87,10 +87,7 @@ impl ArticleIndex {
 
         let mut writer = inner.writer(50_000_000)?;
         for article_id in db.articles.list_articles()? {
-            let article_name = db
-                .articles
-                .name_by_id(article_id)?
-                .expect("Inconsistent data: name for article_id not found");
+            let article_name = db.articles.name_by_id(article_id)?;
             let (
                 _,
                 Revision {

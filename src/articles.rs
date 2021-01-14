@@ -137,7 +137,7 @@ fn get(
         // That's probably not worth it right now tho.
         let context = RevContext {
             site_name: &cfg.site_name,
-            author: db.users.name_by_id(author_id)?.unwrap_or_default(),
+            author: db.users.name_by_id(author_id)?,
             main_page: article_name == "Main",
             article_name,
             user,
@@ -321,7 +321,7 @@ fn revs(
         let revs = db.articles.list_revisions(id)?;
         let mut revs_with_author = Vec::with_capacity(revs.len());
         for (id, rev) in revs.into_iter() {
-            let author = db.users.name_by_id(rev.author_id)?.unwrap_or_default();
+            let author = db.users.name_by_id(rev.author_id)?;
             revs_with_author.push((id.rev_number(), rev, author));
         }
         let context = json! {{
@@ -353,11 +353,11 @@ fn rev(
     if let Some(article_id) = db.articles.id_by_name(&article_name)? {
         let rev_id = match db.articles.verified_rev_id(article_id, rev_id) {
             Ok(id) => id,
-            Err(Error::RevisionUnknown(id)) => {
+            Err(Error::RevisionUnknown(_id, rev_number)) => {
                 let context = json! {{
                     "site_name": &cfg.site_name,
                     "article_name": article_name,
-                    "rev_number": id.rev_number(),
+                    "rev_number": rev_number,
                     "user": user,
                 }};
                 return Ok(status::Custom(
@@ -374,7 +374,7 @@ fn rev(
         } = db.articles.get_revision(rev_id)?;
         let context = RevContext {
             site_name: &cfg.site_name,
-            author: db.users.name_by_id(author_id)?.unwrap_or_default(),
+            author: db.users.name_by_id(author_id)?,
             main_page: article_name == "Main",
             article_name,
             user,

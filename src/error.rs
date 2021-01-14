@@ -13,6 +13,7 @@ use tantivy::{query::QueryParserError, TantivyError};
 use crate::database::{
     articles::{rev_id::RevId, ArticleId},
     users::UserId,
+    Id,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -30,7 +31,7 @@ pub enum Error {
     #[error("Unknown user: {0}")]
     UserNotFound(String),
     #[error("Revision '{0:?}' does not exist")]
-    RevisionUnknown(RevId),
+    RevisionUnknown(ArticleId, Id),
     #[error("New content is identical to the previous revision")]
     IdenticalNewRevision,
     #[error("Error changing article name: Article {0} already exists")]
@@ -39,8 +40,8 @@ pub enum Error {
     InvalidIdData(#[from] TryFromSliceError),
     #[error("Database is inconsistent: Revision {0:?} is missing fields")]
     RevisionDataInconsistent(RevId),
-    #[error("User data inconsistent: user {0} exists, but has no password")]
-    UserDataInconsistent(String),
+    #[error("User data inconsistent: user with id {0:?} doesn't have a name")]
+    UserDataInconsistent(UserId),
     #[error("Database returned inconsistent data: article id {0:?} not found")]
     ArticleDataInconsistent(ArticleId),
     #[error("User id {0:?} does not exist or doesn't have a password")]
@@ -101,7 +102,7 @@ impl Error {
             UserAlreadyExists(_) | IdenticalNewRevision | DuplicateArticleName(_) => {
                 Status::BadRequest
             }
-            UserNotFound(_) | RevisionUnknown(_) | CaptchaNotFound => Status::NotFound,
+            UserNotFound(_) | RevisionUnknown(_, _) | CaptchaNotFound => Status::NotFound,
         }
     }
 }
