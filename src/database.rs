@@ -93,19 +93,22 @@ mod tests {
 
     use super::*;
 
-    fn db() -> crate::Result<Db> {
-        let sled_db = sled::Config::default().temporary(true).open()?;
-        Db::load_or_create(sled_db)
+    fn db() -> Db {
+        let sled_db = sled::Config::default()
+            .temporary(true)
+            .open()
+            .expect("Failed to create sled db");
+        Db::load_or_create(sled_db).expect("Failed to open database")
     }
 
     #[test]
     fn create_database() {
-        db().unwrap();
+        db();
     }
 
     #[test]
     fn register_and_login() -> crate::Result<()> {
-        let db = db()?;
+        let db = db();
         let username = "someone";
         let password = "hunter2";
         let user_id = db.users.register(&username, &password)?;
@@ -136,8 +139,26 @@ mod tests {
     }
 
     #[test]
+    fn first_user_is_admin() -> crate::Result<()> {
+        let db = db();
+        let user_id = db.users.register("username", "password")?;
+        assert!(db.users.is_admin(user_id)?);
+        let user_id = db.users.register("user2", "password123")?;
+        assert!(!db.users.is_admin(user_id)?);
+        Ok(())
+    }
+
+    #[test]
+    fn settings() {
+        let db = db();
+        assert!(db.registration_enabled().unwrap());
+        db.set_registration_enabled(false).unwrap();
+        assert!(!db.registration_enabled().unwrap());
+    }
+
+    #[test]
     fn create_article_and_revision() -> crate::Result<()> {
-        let db = db()?;
+        let db = db();
         let article_name = "MainPage";
         let author_id = db.users.register("username", "password")?;
         let content = r#"
@@ -201,7 +222,7 @@ Something [Link](Links) to something else. New content. Ha ha ha."#;
 
     #[test]
     fn add_and_list_revisions() -> crate::Result<()> {
-        let db = db()?;
+        let db = db();
         let article_name = "MainPage";
         let article_id = db.articles.create(article_name)?;
         let user1_id = db.users.register("user1", "password123")?;
@@ -257,7 +278,7 @@ Something [Link](Links) to something else. New content. Ha ha ha."#;
     #[test]
     fn query_specific_revisions() -> crate::Result<()> {
         // Basic setup
-        let db = db()?;
+        let db = db();
         let article_name = "MainPage";
         let article_id = db.articles.create(article_name)?;
         let user_id = db.users.register("user1", "password123")?;
@@ -301,5 +322,47 @@ Something [Link](Links) to something else. New content. Ha ha ha."#;
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn rename_article() {
+        let db = db();
+        let article_id = db
+            .articles
+            .create("name1")
+            .expect("failed to create article");
+        assert!(db.articles.name_exists("name1").unwrap());
+        db.articles
+            .change_name(article_id, "name2")
+            .expect("failed to rename article");
+        assert!(!db.articles.name_exists("name1").unwrap());
+        assert_eq!(db.articles.id_by_name("name2").unwrap(), Some(article_id));
+    }
+
+    #[test]
+    fn verified_rev_id() {
+        let db = db();
+        let author_id = db
+            .users
+            .register("user1", "password123")
+            .expect("failed to register user");
+        let article_id = db
+            .articles
+            .create("article")
+            .expect("failed to create article");
+        let (rev_id, _rev) = db
+            .articles
+            .add_revision(article_id, author_id, "blah blah blah")
+            .expect("failed to create revision");
+        // Verify a valid article id + rev number
+        assert_eq!(
+            db.articles.verified_rev_id(rev_id.0, rev_id.1).unwrap(),
+            rev_id
+        );
+        // Verify an invalid rev number returns the appropriate error
+        assert!(matches!(
+            db.articles.verified_rev_id(article_id, rev_id.1.next()),
+            Err(crate::Error::RevisionUnknown(_, _))
+        ));
     }
 }

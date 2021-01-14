@@ -167,8 +167,13 @@ mod tests {
     fn redirects() {
         let client = client().unwrap();
         let assert_redirect = |uri: &str, location| {
-            let response = client.get(uri).dispatch();
-            assert_eq!(response.status(), Status::SeeOther);
+            let response = client.get(dbg!(uri)).dispatch();
+            assert_eq!(
+                response.status(),
+                Status::SeeOther,
+                "body: {:?}",
+                response.into_string()
+            );
             assert_eq!(response.headers().get_one("Location"), Some(location));
         };
         let assert_no_redirect = |uri: &str| {
@@ -179,6 +184,8 @@ mod tests {
         assert_redirect("/", "/Main");
         // When not logged in, don't allow any edits
         assert_redirect("/Main/edit", "/u/login");
+        // And you don't allow access to settings
+        assert_redirect("/settings", "/u/login");
         // Also trying to "log out" while not logged in should redirect
         assert_redirect("/u/logout", "/Main");
         // while the login/register routes should not redirect
@@ -190,6 +197,8 @@ mod tests {
         assert_redirect("/u/register", "/Main");
         // Editing an article should be possible now
         assert_no_redirect("/Main/edit");
+        // As well as changing your settings
+        assert_no_redirect("/settings");
         // Always redirect / to main
         assert_redirect("/", "/Main");
         // Finally, logout should not redirect now, but that only works once lol

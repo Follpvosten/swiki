@@ -109,7 +109,7 @@ fn create(cfg: State<Config>, user: Option<LoggedUser>) -> Template {
     Template::render("article_create", context)
 }
 
-#[get("/<article_name>")]
+#[get("/<article_name>", rank = 3)]
 fn get(
     db: State<Db>,
     cfg: State<Config>,
