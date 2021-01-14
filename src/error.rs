@@ -56,20 +56,9 @@ pub enum Error {
     #[error("Internal rocket error: failed to get database")]
     DatabaseRequestGuardFailed,
     #[error("Error updating search index: {0}")]
-    TantivyError(TantivyError),
+    TantivyError(#[from] TantivyError),
     #[error("Error parsing search query: {0}")]
-    QueryParserError(QueryParserError),
-}
-
-impl From<TantivyError> for Error {
-    fn from(err: TantivyError) -> Self {
-        Error::TantivyError(err)
-    }
-}
-impl From<QueryParserError> for Error {
-    fn from(err: QueryParserError) -> Self {
-        Error::QueryParserError(err)
-    }
+    QueryParserError(#[from] QueryParserError),
 }
 
 // Unwrap more specific errors from transactions.

@@ -83,7 +83,7 @@ impl<'a, 'r> FromRequest<'a, 'r> for &'a UserSession {
     }
 }
 
-#[derive(serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct LoggedUser {
     id: UserId,
     name: String,
@@ -119,11 +119,8 @@ impl<'a, 'r> FromRequest<'a, 'r> for LoggedUser {
     }
 }
 
-#[derive(serde::Serialize)]
-pub struct LoggedAdmin {
-    id: UserId,
-    name: String,
-}
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LoggedAdmin(LoggedUser);
 #[rocket::async_trait]
 impl<'a, 'r> FromRequest<'a, 'r> for LoggedAdmin {
     type Error = Error;
@@ -131,8 +128,7 @@ impl<'a, 'r> FromRequest<'a, 'r> for LoggedAdmin {
     async fn from_request(request: &'a Request<'r>) -> Outcome<Self, Self::Error> {
         let logged_user: LoggedUser = try_outcome!(request.guard().await);
         if logged_user.is_admin {
-            let LoggedUser { id, name, .. } = logged_user;
-            Outcome::Success(LoggedAdmin { id, name })
+            Outcome::Success(LoggedAdmin(logged_user))
         } else {
             Outcome::Forward(())
         }

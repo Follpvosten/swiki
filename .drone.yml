@@ -21,7 +21,7 @@ steps:
     commands:
       - cargo test
 
-  - name: rebuild-cache
+  - name: rebuild cache
     image: drillster/drone-volume-cache
     volumes:
       - name: cache

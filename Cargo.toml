@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rocket = { git = "https://github.com/SergioBenitez/Rocket.git", rev = "1f1f44f336e5a172361fc1860461bb03667b1ed2" }
+rocket = { git = "https://github.com/SergioBenitez/Rocket.git", rev = "407e346a6a32da548f8e31d2f684061565467d06" }
 sled = "0.34"
 thiserror = "1"
 serde = { version = "1", features = ["derive"] }
@@ -27,7 +27,7 @@ tantivy = { git = "https://github.com/tantivy-search/tantivy.git", branch = "mai
 
 [dependencies.rocket_contrib]
 git = "https://github.com/SergioBenitez/Rocket.git"
-rev = "1f1f44f336e5a172361fc1860461bb03667b1ed2"
+rev = "407e346a6a32da548f8e31d2f684061565467d06"
 features = ["tera_templates", "uuid"]
 
 [dev-dependencies]
