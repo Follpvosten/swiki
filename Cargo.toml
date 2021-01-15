@@ -25,6 +25,7 @@ zeroize = "1"
 base64 = "0.13"
 tantivy = { git = "https://github.com/tantivy-search/tantivy.git", branch = "main" }
 dashmap = "4"
+parking_lot = "0.11"
 
 [dependencies.rocket_contrib]
 git = "https://github.com/SergioBenitez/Rocket.git"

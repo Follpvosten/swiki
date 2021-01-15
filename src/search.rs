@@ -1,11 +1,12 @@
 use chrono::{DateTime, Utc};
+use parking_lot::Mutex;
 use pulldown_cmark::{html, BrokenLink, CowStr, Event, Options, Parser, Tag};
 use tantivy::{
     collector::TopDocs,
     doc,
     query::QueryParser,
     schema::{Field, Schema, INDEXED, STORED, TEXT},
-    IndexReader, Snippet, SnippetGenerator, Term,
+    IndexReader, IndexWriter, Snippet, SnippetGenerator, Term,
 };
 
 use crate::{database::articles::ArticleId, Result};
@@ -17,6 +18,7 @@ pub struct ArticleIndex {
     date_field: Field,
     inner: tantivy::Index,
     reader: IndexReader,
+    writer: Mutex<IndexWriter>,
 }
 
 fn serialize_snippet<S: serde::Serializer>(
@@ -120,6 +122,7 @@ impl ArticleIndex {
             date_field,
             inner,
             reader,
+            writer: Mutex::new(writer),
         })
     }
 
@@ -186,7 +189,7 @@ impl ArticleIndex {
         content: &str,
         date: DateTime<Utc>,
     ) -> Result<()> {
-        let mut writer = self.inner.writer_with_num_threads(1, 3_000_000)?;
+        let mut writer = self.writer.lock();
         writer.delete_term(Term::from_field_u64(self.id_field, id.0 as _));
         writer.add_document(doc! {
             self.id_field => id.0 as u64,

@@ -2338,6 +2338,7 @@ dependencies = [
  "itertools",
  "lipsum",
  "log",
+ "parking_lot",
  "pulldown-cmark",
  "rand 0.8.0",
  "rocket",
