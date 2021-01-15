@@ -65,7 +65,7 @@ fn generate_captcha() -> Result<(String, String)> {
 async fn gen_captcha_and_id(cache: &Cache) -> Result<(Uuid, String)> {
     let (solution, base64) = rocket::tokio::task::spawn_blocking(generate_captcha).await??;
     let id = Uuid::new_v4();
-    cache.register_captcha(id, &solution)?;
+    cache.register_captcha(id, &solution);
     Ok((id, base64))
 }
 
@@ -162,11 +162,8 @@ async fn register_form(
     let (pwds_dont_match, username_taken, failed_captcha) = (
         password != pwd_confirm || password.is_empty(),
         db.users.name_exists(&username)? || username == "register" || username == "login",
-        !cache.validate_captcha(captcha_id, &captcha_solution)?,
+        !cache.validate_captcha(captcha_id, &captcha_solution),
     );
-
-    // Remove/invalidate the used captcha in *any* case
-    cache.remove_captcha(captcha_id)?;
 
     if pwds_dont_match || username_taken || failed_captcha {
         let (id, base64) = gen_captcha_and_id(&*cache).await?;

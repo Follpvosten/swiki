@@ -64,7 +64,7 @@ fn rocket(db: Db) -> Result<rocket::Rocket> {
         .mount("/settings", settings::routes())
         .mount("/res", StaticFiles::from("static"))
         .manage(ArticleIndex::new(&db)?)
-        .manage(Cache::new()?)
+        .manage(Cache::default())
         .manage(db)
         .attach(Template::fairing())
         .attach(AdHoc::config::<Config>()))

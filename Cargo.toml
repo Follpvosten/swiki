@@ -24,6 +24,7 @@ uuid = { version = "*", features = ["v4"] }
 zeroize = "1"
 base64 = "0.13"
 tantivy = { git = "https://github.com/tantivy-search/tantivy.git", branch = "main" }
+dashmap = "4"
 
 [dependencies.rocket_contrib]
 git = "https://github.com/SergioBenitez/Rocket.git"
