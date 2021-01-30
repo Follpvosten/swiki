@@ -204,7 +204,7 @@ impl Users {
 
                 // If this is the first user, make them an admin
                 let admin_key = [&id.to_bytes(), flags::ADMIN].concat();
-                id_flag_val.insert(admin_key, &[(id.0 == Id::first()) as u8])?;
+                id_flag_val.insert(admin_key, &[(id.0 == Id::first().next()) as u8])?;
 
                 let password_hashed = hash_password(password)
                     .map_err(Error::from)

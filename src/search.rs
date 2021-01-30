@@ -17,7 +17,7 @@ pub struct ArticleIndex {
     content_field: Field,
     date_field: Field,
     inner: tantivy::Index,
-    reader: IndexReader,
+    pub(crate) reader: IndexReader,
     writer: Mutex<IndexWriter>,
 }
 
@@ -189,10 +189,11 @@ impl ArticleIndex {
         content: &str,
         date: DateTime<Utc>,
     ) -> Result<()> {
+        let id = id.0 as u64;
         let mut writer = self.writer.lock();
-        writer.delete_term(Term::from_field_u64(self.id_field, id.0 as _));
+        writer.delete_term(Term::from_field_u64(self.id_field, id));
         writer.add_document(doc! {
-            self.id_field => id.0 as u64,
+            self.id_field => id,
             self.name_field => article_name,
             self.content_field => markdown_to_text(content),
             self.date_field => date

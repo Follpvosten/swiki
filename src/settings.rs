@@ -8,7 +8,7 @@ use crate::{
 };
 
 pub fn routes() -> Vec<rocket::Route> {
-    rocket::routes![panel_page, panel_redirect, admin_settings]
+    rocket::routes![panel_page, panel_redirect, admin_settings, admin_redirect]
 }
 
 #[get("/")]
@@ -33,8 +33,9 @@ fn panel_redirect() -> Redirect {
 }
 
 #[derive(FromForm)]
-struct AdminSettings {
-    registration_enabled: bool,
+#[cfg_attr(test, derive(serde::Serialize))]
+pub struct AdminSettings {
+    pub registration_enabled: bool,
 }
 
 #[post("/admin", data = "<form>")]
@@ -65,4 +66,9 @@ fn admin_settings(
         }};
         Ok(Template::render("settings_success", context))
     }
+}
+
+#[post("/admin", rank = 2)]
+fn admin_redirect() -> Redirect {
+    Redirect::to("/settings")
 }

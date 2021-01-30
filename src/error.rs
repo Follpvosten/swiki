@@ -127,11 +127,12 @@ impl<'r> Responder<'r, 'static> for Error {
         // If this doesn't return Some, we're dead anyways because the whole
         // runtime was initialized in the wrong way
         let cfg: &crate::Config = request.managed_state().unwrap();
+        let status = self.status();
         let context = serde_json::json! {{
             "site_name": &cfg.site_name,
-            "status": self.status().to_string(),
+            "status": status.to_string(),
             "error": self.to_string(),
         }};
-        Template::render("error", context).respond_to(request)
+        response::status::Custom(status, Template::render("error", context)).respond_to(request)
     }
 }

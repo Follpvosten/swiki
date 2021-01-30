@@ -98,7 +98,9 @@ mod tests {
             .temporary(true)
             .open()
             .expect("Failed to create sled db");
-        Db::load_or_create(sled_db).expect("Failed to open database")
+        Db::load_or_create(sled_db)
+            .and_then(crate::seed_db)
+            .expect("Failed to open database")
     }
 
     #[test]

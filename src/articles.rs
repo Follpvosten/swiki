@@ -196,9 +196,10 @@ fn edit_page(
     Ok(Template::render("article_edit", context))
 }
 #[derive(FromForm)]
-struct AddRevRequest {
-    title: Option<String>,
-    content: String,
+#[cfg_attr(test, derive(serde::Serialize))]
+pub struct AddRevRequest {
+    pub title: Option<String>,
+    pub content: String,
 }
 #[post("/<article_name>/edit", data = "<form>")]
 async fn edit_form(
@@ -210,18 +211,18 @@ async fn edit_form(
     session: &UserSession,
     user: LoggedUser,
 ) -> Result<status::Custom<Template>> {
-    // If it's an existing article, use its id; otherwise, create a new article.
-    let (article_id, new_article) = match db.articles.id_by_name(&article_name)? {
-        Some(id) => (id, false),
-        None => (db.articles.create(&article_name)?, true),
-    };
+    // Get the article's id if any.
+    let article_id = db.articles.id_by_name(&article_name)?;
+
     let AddRevRequest {
         title: new_title,
         content: new_content,
     } = form.into_inner();
 
-    let new_name = if let Some(new_name) = new_title.as_deref() {
-        if new_article || article_name == "Main" {
+    // Here we verify if the request is even valid
+    // TODO express this better somehow
+    let new_name = if let Some(new_name) = dbg!(new_title.as_deref()) {
+        if article_id.is_none() || article_name == "Main" {
             // This is not allowed. Re-render editing page.
             let context = NewRevContext {
                 site_name: &cfg.site_name,
@@ -229,7 +230,7 @@ async fn edit_form(
                 article_name,
                 user,
                 old_content: new_content,
-                new_article,
+                new_article: article_id.is_none(),
                 invalid_name_change: true,
             };
             return Ok(status::Custom(
@@ -239,13 +240,22 @@ async fn edit_form(
         } else if new_name != article_name {
             // Change the article's title
             // This would error if we tried to call it with the same name
-            db.articles.change_name(article_id, new_name)?;
+
+            // The unwrap is safe because we checked .is_none() above
+            // I would prefer to do it differently tho
+            db.articles.change_name(article_id.unwrap(), new_name)?;
             true
         } else {
             false
         }
     } else {
         false
+    };
+
+    // And then we acquire the id we're actually working with
+    let article_id = match article_id {
+        Some(id) => id,
+        None => db.articles.create(&article_name)?,
     };
 
     let res = db
