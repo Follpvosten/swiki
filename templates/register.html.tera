@@ -17,6 +17,9 @@
         {% if username_taken %}
         <p class="help is-danger">This username is invalid or already taken!</p>
         {% endif %}
+        {% if no_username %}
+        <p class="help is-danger">You need a username!</p>
+        {% endif %}
       </div>
       <div class="field">
         <label class="label" for="password">Password:</label>

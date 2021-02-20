@@ -27,6 +27,7 @@ I will do a "release" once sled 1.0 hits.
 * [ ] Admin settings
   * [x] Disabling registration
   * [ ] Possibly other management stuff
+* [ ] Categories
 * [ ] API
 
 A ToDo on the Horizon is also updating the UI; currently I'm using Bulma without

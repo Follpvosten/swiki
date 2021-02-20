@@ -1,9 +1,9 @@
 use rocket::{
     get,
-    http::{Cookie, CookieJar},
+    http::{Cookie, CookieJar, Status},
     post,
     request::Form,
-    response::Redirect,
+    response::{status, Redirect},
     FromForm, State,
 };
 use rocket_contrib::{templates::Template, uuid::Uuid as RocketUuid};
@@ -69,7 +69,7 @@ async fn gen_captcha_and_id(cache: &Cache) -> Result<(Uuid, String)> {
     Ok((id, base64))
 }
 
-#[derive(serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
 struct RegisterPageContext<'a> {
     site_name: &'a str,
     page_name: &'static str,
@@ -78,6 +78,7 @@ struct RegisterPageContext<'a> {
     captcha_uuid: String,
     pwds_dont_match: bool,
     username_taken: bool,
+    no_username: bool,
     failed_captcha: bool,
 }
 impl<'a> Default for RegisterPageContext<'a> {
@@ -90,6 +91,7 @@ impl<'a> Default for RegisterPageContext<'a> {
             captcha_uuid: Default::default(),
             pwds_dont_match: false,
             username_taken: false,
+            no_username: false,
             failed_captcha: false,
         }
     }
@@ -128,7 +130,7 @@ fn serialize_uuid<S: serde::Serializer>(
 ) -> std::result::Result<S::Ok, S::Error> {
     s.serialize_str(&value.to_string())
 }
-#[derive(FromForm)]
+#[derive(Debug, FromForm)]
 #[cfg_attr(test, derive(serde::Serialize))]
 pub(crate) struct RegisterRequest {
     pub(crate) username: String,
@@ -149,7 +151,7 @@ async fn register_form(
     cache: State<'_, Cache>,
     form: Form<RegisterRequest>,
     _er: EnabledRegistration,
-) -> Result<Template> {
+) -> Result<status::Custom<Template>> {
     let RegisterRequest {
         username,
         mut password,
@@ -159,13 +161,14 @@ async fn register_form(
     } = form.into_inner();
     let captcha_id = captcha_id.into_inner();
 
-    let (pwds_dont_match, username_taken, failed_captcha) = (
+    let (pwds_dont_match, username_taken, no_username, failed_captcha) = (
         password != pwd_confirm || password.is_empty(),
         db.users.name_exists(&username)? || username == "register" || username == "login",
+        username.is_empty(),
         !cache.validate_captcha(captcha_id, &captcha_solution),
     );
 
-    if pwds_dont_match || username_taken || failed_captcha {
+    if pwds_dont_match || username_taken || no_username || failed_captcha {
         let (id, base64) = gen_captcha_and_id(&*cache).await?;
         let context = RegisterPageContext {
             site_name: &cfg.site_name,
@@ -174,10 +177,14 @@ async fn register_form(
             captcha_uuid: id.to_string(),
             pwds_dont_match,
             username_taken,
+            no_username,
             failed_captcha,
             ..Default::default()
         };
-        return Ok(Template::render("register", context));
+        return Ok(status::Custom(
+            Status::BadRequest,
+            Template::render("register", context),
+        ));
     }
     // If we're here, registration is successful
     // Register the user
@@ -187,7 +194,10 @@ async fn register_form(
     // Make sure everything is stored on disk
     db.flush().await?;
     // Return some success messag
-    Ok(Template::render("register_success", &*cfg))
+    Ok(status::Custom(
+        Status::Ok,
+        Template::render("register_success", &*cfg),
+    ))
 }
 #[post("/register", rank = 3)]
 fn register_post_redirect_always() -> Redirect {
@@ -206,7 +216,7 @@ fn login_page(cfg: State<Config>) -> Template {
     }};
     Template::render("login", context)
 }
-#[derive(FromForm)]
+#[derive(Debug, FromForm)]
 #[cfg_attr(test, derive(serde::Serialize))]
 pub(crate) struct LoginRequest {
     pub(crate) username: String,
