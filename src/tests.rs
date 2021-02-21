@@ -499,18 +499,127 @@ fn search() {
     assert!(third_body_length > first_body_length);
 }
 
-// TODO
-// #[test]
-// fn failed_login_and_register() {
-//     let client = client();
-//     // We'll test all of the ways registering can fail, oh boy
-//     // Helper method so we can check the output
-//     let get_html = |request: RegisterRequest| {
-//         let text = post_form(&client, "/u/register", request)
-//             .into_string()
-//             .unwrap();
-//         scraper::Html::parse_document(&text)
-//     };
-//     // We will do this often, specifically whenever we want a successful captcha result
-//     let (captcha_id, captcha_solution) = register_challenge(&client);
-// }
+#[test]
+fn failed_register() {
+    use scraper::Html;
+
+    let client = client();
+    // We'll test all of the ways registering can fail, oh boy
+    // Helper function so we can check the output
+    // This will also assert that the status is BadRequest
+    let get_html = |request: &RegisterRequest| {
+        let response = post_form(&client, "/u/register", request);
+        assert_eq!(
+            response.status(),
+            Status::BadRequest,
+            "request: {:?}\nresponse: {:?}",
+            request,
+            response.into_string()
+        );
+        let text = response.into_string().unwrap();
+        scraper::Html::parse_document(&text)
+    };
+    // Helper function to check if any of the p.help.is-danger elements on the
+    // given Html has the given text as content
+    let assert_help_text = |html: &Html, content: &str| {
+        let selector = Selector::parse("p.help.is-danger").unwrap();
+        let mut elements = html.select(&selector);
+        assert!(
+            elements.any(|elem| elem.inner_html() == content),
+            "Failed to assert help text {} (html: {})",
+            content,
+            html.root_element().inner_html()
+        );
+    };
+
+    // No username
+    let (captcha_id, captcha_solution) = register_challenge(&client);
+    let request = RegisterRequest {
+        username: "".into(),
+        password: "password123".into(),
+        pwd_confirm: "password123".into(),
+        captcha_id,
+        captcha_solution,
+    };
+    let html = get_html(&request);
+    assert_help_text(&html, "You need a username!");
+
+    // No password
+    let (captcha_id, captcha_solution) = register_challenge(&client);
+    let request = RegisterRequest {
+        username: "Someone".into(),
+        password: "".into(),
+        pwd_confirm: "".into(),
+        captcha_id,
+        captcha_solution,
+    };
+    let html = get_html(&request);
+    assert_help_text(&html, "The given passwords were empty or did not match!");
+
+    // Non-matching passwords
+    let (captcha_id, captcha_solution) = register_challenge(&client);
+    let request = RegisterRequest {
+        password: "password123".into(),
+        pwd_confirm: "PassWord123".into(),
+        captcha_id,
+        captcha_solution,
+        ..request
+    };
+    let html = get_html(&request);
+    assert_help_text(&html, "The given passwords were empty or did not match!");
+
+    // Invalid usernames
+    let (captcha_id, captcha_solution) = register_challenge(&client);
+    let mut request = RegisterRequest {
+        username: "register".into(),
+        password: "password123".into(),
+        pwd_confirm: "password123".into(),
+        captcha_id,
+        captcha_solution,
+    };
+    let html = get_html(&request);
+    assert_help_text(&html, "This username is invalid or already taken!");
+    let (captcha_id, captcha_solution) = register_challenge(&client);
+    request.username = "login".into();
+    request.captcha_id = captcha_id;
+    request.captcha_solution = captcha_solution;
+    let html = get_html(&request);
+    assert_help_text(&html, "This username is invalid or already taken!");
+
+    // For an already taken username, we need to register one successfully
+    register_account(&client, "Someone", "password123");
+    let (captcha_id, captcha_solution) = register_challenge(&client);
+    let request = RegisterRequest {
+        username: "Someone".into(),
+        password: "password123".into(),
+        pwd_confirm: "password123".into(),
+        captcha_id,
+        captcha_solution,
+    };
+    let html = get_html(&request);
+    assert_help_text(&html, "This username is invalid or already taken!");
+
+    // Wrong captcha solution
+    let (captcha_id, _solution) = register_challenge(&client);
+    let request = RegisterRequest {
+        username: "Someone".into(),
+        password: "password123".into(),
+        pwd_confirm: "password123".into(),
+        captcha_id,
+        // This is a definitly invalid captcha
+        captcha_solution: "aAaAaA".into(),
+    };
+    let html = get_html(&request);
+    assert_help_text(&html, "Error, please try again!");
+    // Completely bollocks captcha
+    let request = RegisterRequest {
+        username: "Someone".into(),
+        password: "password123".into(),
+        pwd_confirm: "password123".into(),
+        //          v ok Rocket, wtf
+        captcha_id: uuid::Uuid::new_v4().to_string().parse().unwrap(),
+        captcha_solution: "WXZTMWEMOUTRIXWFaaaaAAaaAAAAhaudhwkjsd".into(),
+    };
+    let html = get_html(&request);
+    assert_help_text(&html, "Error, please try again!");
+}
