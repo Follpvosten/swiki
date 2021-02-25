@@ -501,8 +501,6 @@ fn search() {
 
 #[test]
 fn failed_register() {
-    use scraper::Html;
-
     let client = client();
     // We'll test all of the ways registering can fail, oh boy
     // Helper function so we can check the output
@@ -521,7 +519,7 @@ fn failed_register() {
     };
     // Helper function to check if any of the p.help.is-danger elements on the
     // given Html has the given text as content
-    let assert_help_text = |html: &Html, content: &str| {
+    let assert_help_text = |html: &scraper::Html, content: &str| {
         let selector = Selector::parse("p.help.is-danger").unwrap();
         let mut elements = html.select(&selector);
         assert!(

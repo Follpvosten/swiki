@@ -1,9 +1,9 @@
 use rocket::{
     get,
-    http::{Cookie, CookieJar, Status},
+    http::{Cookie, CookieJar},
     post,
     request::Form,
-    response::{status, Redirect},
+    response::{Redirect, Responder},
     FromForm, State,
 };
 use rocket_contrib::{templates::Template, uuid::Uuid as RocketUuid};
@@ -22,17 +22,12 @@ use crate::{
 pub fn routes() -> Vec<rocket::Route> {
     rocket::routes![
         profile,
-        register_redirect,
         register_page,
-        register_redirect_always,
-        register_post_redirect,
         register_form,
-        register_post_redirect_always,
         login_redirect,
         login_page,
         login_form,
         logout,
-        logout_redirect,
     ]
 }
 
@@ -96,17 +91,28 @@ impl<'a> Default for RegisterPageContext<'a> {
         }
     }
 }
-#[get("/register")]
-fn register_redirect(_session: &UserSession) -> Redirect {
-    Redirect::to("/Main")
+
+#[derive(Responder)]
+#[allow(clippy::large_enum_variant)]
+enum TemplateResult {
+    Template(Template),
+    #[response(status = 400)]
+    Error(Template),
+    Redirect(Redirect),
 }
-#[get("/register", rank = 2)]
+
+#[get("/register")]
 async fn register_page(
     cfg: State<'_, Config>,
     cache: State<'_, Cache>,
-    _er: EnabledRegistration,
-) -> Result<Template> {
-    // TODO handle already logged in state
+    er: Option<EnabledRegistration>,
+    session: Option<&UserSession>,
+) -> Result<TemplateResult> {
+    // If er is None, registration is disabled.
+    // If session is Some, we're already logged in.
+    if er.is_none() || session.is_some() {
+        return Ok(TemplateResult::Redirect(Redirect::to("/Main")));
+    }
     // Generate a captcha to include in the login form
     let (id, base64) = gen_captcha_and_id(&*cache).await?;
     let context = RegisterPageContext {
@@ -115,12 +121,9 @@ async fn register_page(
         captcha_uuid: id.to_string(),
         ..Default::default()
     };
-    Ok(Template::render("register", context))
-}
-// Redirect in all other cases (= registration disabled)
-#[get("/register", rank = 3)]
-fn register_redirect_always() -> Redirect {
-    Redirect::to("/Main")
+    Ok(TemplateResult::Template(Template::render(
+        "register", context,
+    )))
 }
 
 #[cfg(test)]
@@ -140,18 +143,21 @@ pub(crate) struct RegisterRequest {
     pub(crate) captcha_id: RocketUuid,
     pub(crate) captcha_solution: String,
 }
-#[post("/register")]
-fn register_post_redirect(_session: &UserSession) -> Redirect {
-    Redirect::to("/Main")
-}
-#[post("/register", data = "<form>", rank = 2)]
+
+#[post("/register", data = "<form>")]
 async fn register_form(
     cfg: State<'_, Config>,
     db: State<'_, Db>,
     cache: State<'_, Cache>,
     form: Form<RegisterRequest>,
-    _er: EnabledRegistration,
-) -> Result<status::Custom<Template>> {
+    er: Option<EnabledRegistration>,
+    session: Option<&UserSession>,
+) -> Result<TemplateResult> {
+    // If er is None, registration is disabled.
+    // If session is Some, we're already logged in.
+    if er.is_none() || session.is_some() {
+        return Ok(TemplateResult::Redirect(Redirect::to("/Main")));
+    }
     let RegisterRequest {
         username,
         mut password,
@@ -181,10 +187,7 @@ async fn register_form(
             failed_captcha,
             ..Default::default()
         };
-        return Ok(status::Custom(
-            Status::BadRequest,
-            Template::render("register", context),
-        ));
+        return Ok(TemplateResult::Error(Template::render("register", context)));
     }
     // If we're here, registration is successful
     // Register the user
@@ -194,14 +197,10 @@ async fn register_form(
     // Make sure everything is stored on disk
     db.flush().await?;
     // Return some success messag
-    Ok(status::Custom(
-        Status::Ok,
-        Template::render("register_success", &*cfg),
-    ))
-}
-#[post("/register", rank = 3)]
-fn register_post_redirect_always() -> Redirect {
-    Redirect::to("/Main")
+    Ok(TemplateResult::Template(Template::render(
+        "register_success",
+        &*cfg,
+    )))
 }
 
 #[get("/login")]
@@ -228,7 +227,12 @@ async fn login_form(
     db: State<'_, Db>,
     form: Form<LoginRequest>,
     cookies: &CookieJar<'_>,
-) -> Result<Template> {
+    session: Option<&UserSession>,
+) -> Result<TemplateResult> {
+    if session.is_some() {
+        // No double logins
+        return Ok(TemplateResult::Redirect(Redirect::to("/Main")));
+    }
     #[derive(serde::Serialize)]
     struct LoginPageContext<'a> {
         site_name: &'a str,
@@ -253,7 +257,7 @@ async fn login_form(
             username_unknown: true,
             wrong_password: false,
         };
-        return Ok(Template::render("login", context));
+        return Ok(TemplateResult::Error(Template::render("login", context)));
     };
 
     if let Some(session) = db.users.try_login(user_id, &password)? {
@@ -275,7 +279,10 @@ async fn login_form(
                 "is_admin": is_admin,
             },
         }};
-        Ok(Template::render("login_success", context))
+        Ok(TemplateResult::Template(Template::render(
+            "login_success",
+            context,
+        )))
     } else {
         password.zeroize();
         let context = LoginPageContext {
@@ -285,7 +292,7 @@ async fn login_form(
             username_unknown: false,
             wrong_password: true,
         };
-        Ok(Template::render("login", context))
+        Ok(TemplateResult::Error(Template::render("login", context)))
     }
 }
 
@@ -294,20 +301,22 @@ async fn logout(
     cfg: State<'_, Config>,
     db: State<'_, Db>,
     cookies: &CookieJar<'_>,
-    session: &UserSession,
-) -> Result<Template> {
-    // Remove the session, both from the db and from the client's cookies
+    session: Option<&UserSession>,
+) -> Result<TemplateResult> {
+    // Remove the session from the user's cookies in any case
     cookies.remove(Cookie::named("session_id"));
-    db.users.destroy_session(session.session_id)?;
-    db.flush().await?;
-    Ok(Template::render("logout_success", &*cfg))
-}
-
-#[get("/logout", rank = 2)]
-fn logout_redirect(cookies: &CookieJar<'_>) -> Redirect {
-    // Just make sure there's no session without caring about anything else
-    cookies.remove(Cookie::named("session_id"));
-    Redirect::to("/Main")
+    if let Some(session) = session {
+        // And if it's still in the database, remove it from there as well
+        db.users.destroy_session(session.session_id)?;
+        db.flush().await?;
+        Ok(TemplateResult::Template(Template::render(
+            "logout_success",
+            &*cfg,
+        )))
+    } else {
+        // Otherwise, just redirect to main
+        Ok(TemplateResult::Redirect(Redirect::to("/Main")))
+    }
 }
 
 #[get("/<_username>", rank = 4)]
