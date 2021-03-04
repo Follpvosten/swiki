@@ -32,6 +32,13 @@ steps:
         - ./target
         - ./cargo-home
 
+  - name: send telegram notification
+    image: appleboy/drone-telegram
+    settings:
+      token:
+        from_secret: bot_token
+      to: -1001423060188
+
 volumes:
   - name: cache
     host:
