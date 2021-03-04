@@ -38,6 +38,11 @@ steps:
       token:
         from_secret: bot_token
       to: -1001423060188
+    when:
+      branch:
+        - main
+      event:
+        - push
 
 volumes:
   - name: cache
