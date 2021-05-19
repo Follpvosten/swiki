@@ -171,9 +171,9 @@ impl Articles {
         Ok(Some((
             rev_id,
             Revision {
+                content,
                 author_id,
                 date,
-                content,
             },
         )))
     }

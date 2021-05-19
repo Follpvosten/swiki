@@ -1,10 +1,10 @@
 use chrono::Utc;
 use pulldown_cmark::{html, BrokenLink, Options, Parser};
 use rocket::{
+    form::Form,
     get,
     http::Status,
     post,
-    request::Form,
     response::{status, Redirect},
     FromForm, Route, State,
 };
@@ -80,11 +80,11 @@ struct RevContext<'a> {
     main_page: bool,
 }
 
-#[get("/search?<q>", rank = -20)]
+#[get("/search?<q>", rank = 0)]
 fn search(
-    db: State<Db>,
-    cfg: State<Config>,
-    index: State<ArticleIndex>,
+    db: &State<Db>,
+    cfg: &State<Config>,
+    index: &State<ArticleIndex>,
     user: Option<LoggedUser>,
     q: String,
 ) -> Result<Template> {
@@ -99,8 +99,8 @@ fn search(
     Ok(Template::render("search", context))
 }
 
-#[get("/create", rank = -20)]
-fn create(cfg: State<Config>, user: Option<LoggedUser>) -> Template {
+#[get("/create", rank = 0)]
+fn create(cfg: &State<Config>, user: Option<LoggedUser>) -> Template {
     let context = json! {{
         "site_name": &cfg.site_name,
         "page_name": "New Article",
@@ -111,8 +111,8 @@ fn create(cfg: State<Config>, user: Option<LoggedUser>) -> Template {
 
 #[get("/<article_name>", rank = 3)]
 fn get(
-    db: State<Db>,
-    cfg: State<Config>,
+    db: &State<Db>,
+    cfg: &State<Config>,
     article_name: String,
     user: Option<LoggedUser>,
 ) -> Result<status::Custom<Template>> {
@@ -167,8 +167,8 @@ struct NewRevContext<'a> {
 }
 #[get("/<article_name>/edit")]
 fn edit_page(
-    db: State<Db>,
-    cfg: State<Config>,
+    db: &State<Db>,
+    cfg: &State<Config>,
     article_name: String,
     // This route will only be called when a user is logged in.
     user: LoggedUser,
@@ -203,9 +203,9 @@ pub struct AddRevRequest {
 }
 #[post("/<article_name>/edit", data = "<form>")]
 async fn edit_form(
-    db: State<'_, Db>,
-    cfg: State<'_, Config>,
-    search_index: State<'_, ArticleIndex>,
+    db: &State<Db>,
+    cfg: &State<Config>,
+    search_index: &State<ArticleIndex>,
     article_name: String,
     form: Form<AddRevRequest>,
     session: &UserSession,
@@ -322,8 +322,8 @@ fn redirect_to_login_post(_article_name: String) -> Redirect {
 
 #[get("/<article_name>/revs")]
 fn revs(
-    db: State<Db>,
-    cfg: State<Config>,
+    db: &State<Db>,
+    cfg: &State<Config>,
     article_name: String,
     user: Option<LoggedUser>,
 ) -> Result<status::Custom<Template>> {
@@ -354,8 +354,8 @@ fn revs(
 // get that article instead of the current one, but with the wrong title. lol.
 #[get("/<article_name>/rev/<rev_id>")]
 fn rev(
-    db: State<Db>,
-    cfg: State<Config>,
+    db: &State<Db>,
+    cfg: &State<Config>,
     article_name: String,
     rev_id: Id,
     user: Option<LoggedUser>,

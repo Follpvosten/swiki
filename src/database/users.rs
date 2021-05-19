@@ -5,8 +5,9 @@ use std::{
 };
 
 use rocket::{
+    outcome::try_outcome,
     request::{FromRequest, Outcome},
-    try_outcome, Request,
+    Request,
 };
 use sled::{Transactional, Tree};
 use uuid::Uuid;
@@ -48,10 +49,10 @@ pub struct UserSession {
     pub user_id: UserId,
 }
 #[rocket::async_trait]
-impl<'a, 'r> FromRequest<'a, 'r> for &'a UserSession {
+impl<'r> FromRequest<'r> for &'r UserSession {
     type Error = Error;
 
-    async fn from_request(request: &'a Request<'r>) -> Outcome<Self, Self::Error> {
+    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         use rocket::outcome::IntoOutcome;
         let result = request.local_cache(|| {
             // Early return if we can't get a valid session id for whatever reason...
@@ -62,7 +63,7 @@ impl<'a, 'r> FromRequest<'a, 'r> for &'a UserSession {
                 .and_then(|vec| uuid::Bytes::try_from(vec.as_slice()).ok())
                 .map(Uuid::from_bytes)?;
             // ...and also early return if we can't get a db handle...
-            let db: &Db = request.managed_state()?;
+            let db: &Db = request.rocket().state()?;
             // ...of course, also if querying the session returns an error...
             let user_id: Option<UserId> = match db.users.get_session_user(session_id) {
                 Err(e) => {
@@ -74,8 +75,8 @@ impl<'a, 'r> FromRequest<'a, 'r> for &'a UserSession {
             }?;
             // ...and finally, if the session doesn't exist (returns None), also forward.
             user_id.map(|user_id| UserSession {
-                user_id,
                 session_id,
+                user_id,
             })
         });
 
@@ -95,16 +96,16 @@ impl LoggedUser {
     }
 }
 #[rocket::async_trait]
-impl<'a, 'r> FromRequest<'a, 'r> for LoggedUser {
+impl<'r> FromRequest<'r> for LoggedUser {
     type Error = Error;
 
-    async fn from_request(request: &'a Request<'r>) -> Outcome<Self, Self::Error> {
+    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         use crate::error::IntoOutcomeHack;
         use rocket::outcome::IntoOutcome;
         // Get the logged user's data
         let session: &UserSession = try_outcome!(request.guard().await);
         // Get a handle on the db
-        let db: &Db = try_outcome!(request.managed_state().or_forward(()));
+        let db: &Db = try_outcome!(request.rocket().state().or_forward(()));
         // Finally, get the user's name
         let name: String = try_outcome!(db.users.name_by_id(session.user_id).into_outcome_hack());
         let is_admin: bool = try_outcome!(db.users.is_admin(session.user_id).into_outcome_hack());
@@ -120,10 +121,10 @@ impl<'a, 'r> FromRequest<'a, 'r> for LoggedUser {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct LoggedAdmin(LoggedUser);
 #[rocket::async_trait]
-impl<'a, 'r> FromRequest<'a, 'r> for LoggedAdmin {
+impl<'r> FromRequest<'r> for LoggedAdmin {
     type Error = Error;
 
-    async fn from_request(request: &'a Request<'r>) -> Outcome<Self, Self::Error> {
+    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let logged_user: LoggedUser = try_outcome!(request.guard().await);
         if logged_user.is_admin {
             Outcome::Success(LoggedAdmin(logged_user))
@@ -160,11 +161,10 @@ impl Users {
     }
     /// Get the UserId for the given username if it is known.
     pub fn id_by_name(&self, username: &str) -> Result<Option<UserId>> {
-        Ok(self
-            .username_userid
+        self.username_userid
             .get(username.as_bytes())?
             .map(|ivec| ivec.as_ref().try_into().map(UserId))
-            .transpose()?)
+            .transpose()
     }
     /// Get the username for the given UserId. Will return an error
     /// if the id is unknown because UserIds can be assumed to be valid.
@@ -227,8 +227,8 @@ impl Users {
         if verify_password(&hash, password)? {
             let session_id = self.create_session(user_id)?;
             Ok(Some(UserSession {
-                user_id,
                 session_id,
+                user_id,
             }))
         } else {
             Ok(None)

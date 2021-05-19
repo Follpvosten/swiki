@@ -126,7 +126,7 @@ impl<'r> Responder<'r, 'static> for Error {
     fn respond_to(self, request: &'r Request<'_>) -> response::Result<'static> {
         // If this doesn't return Some, we're dead anyways because the whole
         // runtime was initialized in the wrong way
-        let cfg: &crate::Config = request.managed_state().unwrap();
+        let cfg: &crate::Config = request.rocket().state().unwrap();
         let status = self.status();
         let context = serde_json::json! {{
             "site_name": &cfg.site_name,

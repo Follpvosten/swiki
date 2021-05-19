@@ -1,8 +1,8 @@
 use rocket::{
+    form::Form,
     get,
     http::{Cookie, CookieJar},
     post,
-    request::Form,
     response::{Redirect, Responder},
     FromForm, State,
 };
@@ -103,8 +103,8 @@ enum TemplateResult {
 
 #[get("/register")]
 async fn register_page(
-    cfg: State<'_, Config>,
-    cache: State<'_, Cache>,
+    cfg: &State<Config>,
+    cache: &State<Cache>,
     er: Option<EnabledRegistration>,
     session: Option<&UserSession>,
 ) -> Result<TemplateResult> {
@@ -146,9 +146,9 @@ pub(crate) struct RegisterRequest {
 
 #[post("/register", data = "<form>")]
 async fn register_form(
-    cfg: State<'_, Config>,
-    db: State<'_, Db>,
-    cache: State<'_, Cache>,
+    cfg: &State<Config>,
+    db: &State<Db>,
+    cache: &State<Cache>,
     form: Form<RegisterRequest>,
     er: Option<EnabledRegistration>,
     session: Option<&UserSession>,
@@ -199,7 +199,7 @@ async fn register_form(
     // Return some success messag
     Ok(TemplateResult::Template(Template::render(
         "register_success",
-        &*cfg,
+        &**cfg,
     )))
 }
 
@@ -208,7 +208,7 @@ fn login_redirect(_session: &UserSession) -> Redirect {
     Redirect::to("/Main")
 }
 #[get("/login", rank = 2)]
-fn login_page(cfg: State<Config>) -> Template {
+fn login_page(cfg: &State<Config>) -> Template {
     let context = json! {{
         "site_name": &cfg.site_name,
         "page_name": "Login",
@@ -223,8 +223,8 @@ pub(crate) struct LoginRequest {
 }
 #[post("/login", data = "<form>")]
 async fn login_form(
-    cfg: State<'_, Config>,
-    db: State<'_, Db>,
+    cfg: &State<Config>,
+    db: &State<Db>,
     form: Form<LoginRequest>,
     cookies: &CookieJar<'_>,
     session: Option<&UserSession>,
@@ -298,8 +298,8 @@ async fn login_form(
 
 #[get("/logout")]
 async fn logout(
-    cfg: State<'_, Config>,
-    db: State<'_, Db>,
+    cfg: &State<Config>,
+    db: &State<Db>,
     cookies: &CookieJar<'_>,
     session: Option<&UserSession>,
 ) -> Result<TemplateResult> {
@@ -311,7 +311,7 @@ async fn logout(
         db.flush().await?;
         Ok(TemplateResult::Template(Template::render(
             "logout_success",
-            &*cfg,
+            &**cfg,
         )))
     } else {
         // Otherwise, just redirect to main
@@ -320,7 +320,7 @@ async fn logout(
 }
 
 #[get("/<_username>", rank = 4)]
-fn profile(_db: State<Db>, _username: String, _user: Option<LoggedUser>) -> Result<Template> {
+fn profile(_db: &State<Db>, _username: String, _user: Option<LoggedUser>) -> Result<Template> {
     todo!()
 }
 

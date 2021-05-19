@@ -56,8 +56,8 @@ fn default_db() -> Result<Db> {
     Db::load_or_create(sled_db).and_then(seed_db)
 }
 
-fn rocket(db: Db) -> Result<rocket::Rocket> {
-    Ok(rocket::ignite()
+fn rocket(db: Db) -> Result<rocket::Rocket<rocket::Build>> {
+    Ok(rocket::build()
         .mount("/", rocket::routes![index])
         .mount("/", articles::routes())
         .mount("/u", users::routes())

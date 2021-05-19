@@ -1,4 +1,4 @@
-use rocket::{get, post, request::Form, response::Redirect, FromForm, State};
+use rocket::{form::Form, get, post, response::Redirect, FromForm, State};
 use rocket_contrib::templates::Template;
 use serde_json::json;
 
@@ -12,7 +12,7 @@ pub fn routes() -> Vec<rocket::Route> {
 }
 
 #[get("/")]
-fn panel_page(db: State<Db>, cfg: State<Config>, user: LoggedUser) -> Result<Template> {
+fn panel_page(db: &State<Db>, cfg: &State<Config>, user: LoggedUser) -> Result<Template> {
     let mut context = json! {{
         "site_name": &cfg.site_name,
         "user": user,
@@ -40,8 +40,8 @@ pub struct AdminSettings {
 
 #[post("/admin", data = "<form>")]
 fn admin_settings(
-    db: State<Db>,
-    cfg: State<Config>,
+    db: &State<Db>,
+    cfg: &State<Config>,
     form: Form<AdminSettings>,
     // Only admins can call this
     // TODO: Mark down the admin's userid somewhere

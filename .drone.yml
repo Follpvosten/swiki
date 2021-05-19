@@ -15,7 +15,7 @@ steps:
         - ./cargo-home
 
   - name: test
-    image: rust:1.49-slim-buster
+    image: rust:1-slim
     environment:
       CARGO_HOME: ./cargo-home
     commands:

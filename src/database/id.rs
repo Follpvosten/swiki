@@ -38,7 +38,7 @@ impl TryFrom<&[u8]> for Id {
 impl<'r> FromParam<'r> for Id {
     type Error = &'r RawStr;
 
-    fn from_param(param: &'r RawStr) -> Result<Self, Self::Error> {
+    fn from_param(param: &'r str) -> Result<Self, Self::Error> {
         Ok(Id(u32::from_param(param)?))
     }
 }

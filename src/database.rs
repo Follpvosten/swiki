@@ -7,8 +7,9 @@ pub mod articles;
 use articles::Articles;
 pub mod users;
 use rocket::{
+    outcome::try_outcome,
     request::{FromRequest, Outcome},
-    try_outcome, Request,
+    Request,
 };
 use users::Users;
 
@@ -27,13 +28,13 @@ mod keys {
 #[derive(Debug, Clone, Copy)]
 pub struct EnabledRegistration;
 #[rocket::async_trait]
-impl<'a, 'r> FromRequest<'a, 'r> for EnabledRegistration {
+impl<'r> FromRequest<'r> for EnabledRegistration {
     type Error = crate::Error;
 
-    async fn from_request(request: &'a Request<'r>) -> Outcome<Self, Self::Error> {
+    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         use crate::error::IntoOutcomeHack;
         use rocket::outcome::IntoOutcome;
-        let db: &Db = try_outcome!(request.managed_state().or_forward(()));
+        let db: &Db = try_outcome!(request.rocket().state().or_forward(()));
         if try_outcome!(db.registration_enabled().into_outcome_hack()) {
             Outcome::Success(EnabledRegistration)
         } else {
