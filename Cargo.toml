@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rocket = { git = "https://github.com/SergioBenitez/Rocket.git", branch = "master" }
+# rocket = { git = "https://github.com/SergioBenitez/Rocket.git", branch = "master" }
 sled = "0.34"
 thiserror = "1"
 serde = { version = "1", features = ["derive"] }
@@ -27,10 +27,15 @@ tantivy = "0.14"
 dashmap = "4"
 parking_lot = "0.11"
 
-[dependencies.rocket_contrib]
+[dependencies.rocket]
 git = "https://github.com/SergioBenitez/Rocket.git"
 branch = "master"
-features = ["tera_templates", "uuid"]
+features = ["uuid"]
+
+[dependencies.rocket_dyn_templates]
+git = "https://github.com/SergioBenitez/Rocket.git"
+branch = "master"
+features = ["tera"]
 
 [dev-dependencies]
 lipsum = "0.7"

@@ -6,7 +6,7 @@ use rocket::{
     response::{Redirect, Responder},
     FromForm, State,
 };
-use rocket_contrib::{templates::Template, uuid::Uuid as RocketUuid};
+use rocket_dyn_templates::Template;
 use serde_json::json;
 use uuid::Uuid;
 use zeroize::Zeroize;
@@ -126,21 +126,13 @@ async fn register_page(
     )))
 }
 
-#[cfg(test)]
-fn serialize_uuid<S: serde::Serializer>(
-    value: &RocketUuid,
-    s: S,
-) -> std::result::Result<S::Ok, S::Error> {
-    s.serialize_str(&value.to_string())
-}
 #[derive(Debug, FromForm)]
 #[cfg_attr(test, derive(serde::Serialize))]
 pub(crate) struct RegisterRequest {
     pub(crate) username: String,
     pub(crate) password: String,
     pub(crate) pwd_confirm: String,
-    #[cfg_attr(test, serde(serialize_with = "serialize_uuid"))]
-    pub(crate) captcha_id: RocketUuid,
+    pub(crate) captcha_id: Uuid,
     pub(crate) captcha_solution: String,
 }
 
@@ -165,7 +157,6 @@ async fn register_form(
         captcha_id,
         captcha_solution,
     } = form.into_inner();
-    let captcha_id = captcha_id.into_inner();
 
     let (pwds_dont_match, username_taken, no_username, failed_captcha) = (
         password != pwd_confirm || password.is_empty(),

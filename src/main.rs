@@ -1,7 +1,7 @@
 #![recursion_limit = "512"]
 
-use rocket::{fairing::AdHoc, response::Redirect};
-use rocket_contrib::{serve::StaticFiles, templates::Template};
+use rocket::{fairing::AdHoc, fs::FileServer, response::Redirect};
+use rocket_dyn_templates::Template;
 
 mod cache;
 pub use cache::Cache;
@@ -62,7 +62,7 @@ fn rocket(db: Db) -> Result<rocket::Rocket<rocket::Build>> {
         .mount("/", articles::routes())
         .mount("/u", users::routes())
         .mount("/settings", settings::routes())
-        .mount("/res", StaticFiles::from("static"))
+        .mount("/res", FileServer::from("static"))
         .manage(ArticleIndex::new(&db)?)
         .manage(Cache::default())
         .manage(db)

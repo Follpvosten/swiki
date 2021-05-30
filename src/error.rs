@@ -6,7 +6,7 @@ use rocket::{
     response::{self, Responder},
     Request,
 };
-use rocket_contrib::templates::{tera, Template};
+use rocket_dyn_templates::{tera, Template};
 use sled::transaction::TransactionError;
 use tantivy::{query::QueryParserError, TantivyError};
 

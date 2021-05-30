@@ -2,8 +2,8 @@ use rocket::{
     http::{ContentType, Status},
     local::blocking::{Client, LocalResponse},
 };
-use rocket_contrib::uuid::Uuid;
 use scraper::Selector;
+use uuid::Uuid;
 
 use super::{rocket, seed_db, Result};
 use crate::{
@@ -60,7 +60,7 @@ fn register_challenge(client: &Client) -> (Uuid, String) {
         .rocket()
         .state::<Cache>()
         .unwrap()
-        .get_solution(captcha_id.into_inner())
+        .get_solution(captcha_id)
         .unwrap();
     (captcha_id, captcha_solution)
 }

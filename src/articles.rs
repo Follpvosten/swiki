@@ -8,7 +8,7 @@ use rocket::{
     response::{status, Redirect},
     FromForm, Route, State,
 };
-use rocket_contrib::templates::Template;
+use rocket_dyn_templates::Template;
 use serde_json::json;
 
 use crate::{

@@ -1,5 +1,5 @@
 use rocket::{form::Form, get, post, response::Redirect, FromForm, State};
-use rocket_contrib::templates::Template;
+use rocket_dyn_templates::Template;
 use serde_json::json;
 
 use crate::{
