@@ -289,10 +289,6 @@ async fn edit_form(
             // Make sure the new name is saved
             db.flush().await?;
         }
-        Ok(status::Custom(
-            Status::Ok,
-            Template::render("article_edit_success", context),
-        ))
     } else {
         let (rev_id, rev) = res?;
         context
@@ -304,11 +300,11 @@ async fn edit_form(
         // Update the article's content and possibly its name, we don't care here.
         // TODO do we really want to return on error here?
         search_index.add_or_update_article(article_id, article_name, &new_content, rev.date)?;
-        Ok(status::Custom(
-            Status::Ok,
-            Template::render("article_edit_success", context),
-        ))
     }
+    Ok(status::Custom(
+        Status::Ok,
+        Template::render("article_edit_success", context),
+    ))
 }
 
 #[get("/<_article_name>/edit", rank = 2)]

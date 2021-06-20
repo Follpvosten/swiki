@@ -362,8 +362,8 @@ fn admin_permissions_and_settings() {
     // Verify this
     let admin_id = db.users.id_by_name("Admin").unwrap().unwrap();
     let user_id = db.users.id_by_name("User").unwrap().unwrap();
-    assert_eq!(db.users.is_admin(admin_id).unwrap(), true);
-    assert_eq!(db.users.is_admin(user_id).unwrap(), false);
+    assert!(db.users.is_admin(admin_id).unwrap());
+    assert!(!db.users.is_admin(user_id).unwrap());
     // Now we check if it's actually applied
     // Log in as admin and change settings
     let admin_form_selector = Selector::parse("form[action='/settings/admin']").unwrap();

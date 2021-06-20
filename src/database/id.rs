@@ -9,7 +9,7 @@ impl Id {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, crate::Error> {
         Ok(Id(u32::from_be_bytes(bytes.try_into()?)))
     }
-    pub fn to_bytes(&self) -> [u8; 4] {
+    pub fn to_bytes(self) -> [u8; 4] {
         self.0.to_be_bytes()
     }
 

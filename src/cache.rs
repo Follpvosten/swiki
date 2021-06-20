@@ -45,23 +45,23 @@ mod tests {
         // Store a first captcha
         cache.register_captcha(id1, solution1);
         // Verify that it works
-        assert_eq!(cache.validate_captcha(id1, solution1), true);
+        assert!(cache.validate_captcha(id1, solution1));
         // But only once
-        assert_eq!(cache.validate_captcha(id1, solution1), false);
+        assert!(!cache.validate_captcha(id1, solution1));
         // And another, just to be sure
         let id2 = Uuid::new_v4();
         let solution2 = "98761";
         cache.register_captcha(id2, solution2);
-        assert_eq!(cache.validate_captcha(id2, solution2), true);
+        assert!(cache.validate_captcha(id2, solution2));
         // Still only once
-        assert_eq!(cache.validate_captcha(id2, solution2), false);
+        assert!(!cache.validate_captcha(id2, solution2));
         // Also verify that using a different known solution doesn't work
         cache.register_captcha(id2, solution2);
-        assert_eq!(cache.validate_captcha(id2, solution1), false);
+        assert!(!cache.validate_captcha(id2, solution1));
         // And this also drops the captcha out
-        assert_eq!(cache.validate_captcha(id2, solution2), false);
+        assert!(!cache.validate_captcha(id2, solution2));
         // An unknown id should always yield a false
-        assert_eq!(cache.validate_captcha(Uuid::new_v4(), "123"), false);
+        assert!(!cache.validate_captcha(Uuid::new_v4(), "123"));
         // Verify that we can delete again
         cache.register_captcha(id1, solution1);
         cache.register_captcha(id2, solution2);

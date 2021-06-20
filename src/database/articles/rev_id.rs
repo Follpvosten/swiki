@@ -22,7 +22,7 @@ impl RevId {
             rev_number.try_into()?,
         ))
     }
-    pub fn to_bytes(&self) -> [u8; 8] {
+    pub fn to_bytes(self) -> [u8; 8] {
         // TODO: This is stupid ugly, rust-lang pls fix this.
         let arr1 = self.0.to_bytes();
         let arr2 = self.1.to_bytes();
