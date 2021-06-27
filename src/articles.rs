@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use pulldown_cmark::{html, BrokenLink, Options, Parser};
 use rocket::{
     form::Form,
@@ -12,10 +12,11 @@ use rocket_dyn_templates::Template;
 use serde_json::json;
 
 use crate::{
-    database::{
-        articles::Revision,
+    db::{
+        self,
+        articles::{DisplayRevision, RevId},
         users::{LoggedUser, UserSession},
-        Db, Id,
+        Db,
     },
     ArticleIndex, Config, Error, Result,
 };
@@ -41,6 +42,7 @@ fn render_404(
 ) -> status::Custom<Template> {
     let context = json! {{
         "site_name": cfg.site_name,
+        "default_path": cfg.default_path,
         "article_name": article_name,
         "user": user,
     }};
@@ -70,28 +72,30 @@ fn markdown_to_html(input: &str) -> String {
 #[derive(serde::Serialize)]
 struct RevContext<'a> {
     site_name: &'a str,
+    default_path: &'a str,
     article_name: String,
     user: Option<LoggedUser>,
-    rev_id: Id,
+    rev_id: i64,
     content: String,
     author: String,
-    date: chrono::DateTime<chrono::Utc>,
+    date: DateTime<Utc>,
     specific_rev: bool,
-    main_page: bool,
 }
 
 #[get("/search?<q>", rank = 0)]
 fn search(
-    db: &State<Db>,
     cfg: &State<Config>,
     index: &State<ArticleIndex>,
     user: Option<LoggedUser>,
     q: String,
 ) -> Result<Template> {
+    let results = index.search_by_text(&q)?;
+    let exact_match = results.iter().any(|r| r.title == q);
     let context = json! {{
-        "exact_match": db.articles.name_exists(&q)?,
-        "results": index.search_by_text(&q)?,
         "site_name": &cfg.site_name,
+        "default_path": &cfg.default_path,
+        "exact_match": exact_match,
+        "results": index.search_by_text(&q)?,
         "page_name": "Search",
         "user": user,
         "query": q,
@@ -103,6 +107,7 @@ fn search(
 fn create(cfg: &State<Config>, user: Option<LoggedUser>) -> Template {
     let context = json! {{
         "site_name": &cfg.site_name,
+        "default_path": &cfg.default_path,
         "page_name": "New Article",
         "user": user,
     }};
@@ -110,40 +115,53 @@ fn create(cfg: &State<Config>, user: Option<LoggedUser>) -> Template {
 }
 
 #[get("/<article_name>", rank = 3)]
-fn get(
+async fn get(
     db: &State<Db>,
     cfg: &State<Config>,
     article_name: String,
     user: Option<LoggedUser>,
 ) -> Result<status::Custom<Template>> {
-    // TODO is this correct? Technically the inner option being none means we
-    // got an unknown id from the database, which would be inconsistent data on
-    // the server side, not a 404.
-    // Alternatively: Should get_current_revision even return an Option? It could
-    // also just error out with UnknownArticle or something.
-    if let Some(Some((rev_id, rev))) = db
-        .articles
-        .id_by_name(&article_name)?
-        .map(|id| db.articles.get_current_revision(id))
-        .transpose()?
-    {
-        let Revision {
+    if let Some(rev) = db.get_current_rev(&article_name).await? {
+        let DisplayRevision {
+            rev_id,
+            author_name,
             content,
-            author_id,
-            date,
+            created,
         } = rev;
-        // We could probably skip the "query database for id" step as well
-        // because the Main page is always Id(0).
-        // That's probably not worth it right now tho.
+        let date = DateTime::from_utc(created, Utc);
         let context = RevContext {
             site_name: &cfg.site_name,
-            author: db.users.name_by_id(author_id)?,
-            main_page: article_name == "Main",
+            default_path: &cfg.default_path,
+            author: author_name,
             article_name,
             user,
-            rev_id: rev_id.rev_number(),
+            rev_id,
             content: markdown_to_html(&content),
             date,
+            specific_rev: false,
+        };
+        Ok(status::Custom(
+            Status::Ok,
+            Template::render("article", context),
+        ))
+    } else if article_name == cfg.main_page {
+        let context = RevContext {
+            site_name: &cfg.site_name,
+            default_path: &cfg.default_path,
+            author: String::default(),
+            article_name,
+            user,
+            rev_id: 0,
+            content: markdown_to_html(&format!(
+                "Welcome to your new wiki!
+
+There's nothing here yet.
+
+To create your main page, go to [{}/edit].  
+Have fun!",
+                cfg.main_page
+            )),
+            date: Utc::now(),
             specific_rev: false,
         };
         Ok(status::Custom(
@@ -158,15 +176,15 @@ fn get(
 #[derive(serde::Serialize)]
 struct NewRevContext<'a> {
     site_name: &'a str,
+    default_path: &'a str,
     article_name: String,
     user: LoggedUser,
     old_content: String,
-    main_page: bool,
     new_article: bool,
     invalid_name_change: bool,
 }
 #[get("/<article_name>/edit")]
-fn edit_page(
+async fn edit_page(
     db: &State<Db>,
     cfg: &State<Config>,
     article_name: String,
@@ -174,19 +192,20 @@ fn edit_page(
     user: LoggedUser,
 ) -> Result<Template> {
     // For a new article, the only difference is the content being empty string.
-    let (old_content, new_article) = match db.articles.id_by_name(&article_name)? {
-        Some(id) => (
-            db.articles
-                .get_current_content(id)?
-                .ok_or(Error::ArticleDataInconsistent(id))?,
-            false,
-        ),
-        // New article
-        None => (String::default(), true),
-    };
+    let (old_content, new_article) = sqlx::query_scalar!(
+        "SELECT content FROM revision r
+        INNER JOIN article a ON a.id = r.article_id
+        WHERE a.name = $1
+        AND num = (SELECT MAX(num) FROM revision WHERE article_id = a.id)",
+        article_name
+    )
+    .fetch_optional(&db.pool)
+    .await?
+    .map(|content| (content, false))
+    .unwrap_or_else(|| (String::default(), true));
     let context = NewRevContext {
         site_name: &cfg.site_name,
-        main_page: article_name == "Main",
+        default_path: &cfg.default_path,
         article_name,
         user,
         old_content,
@@ -211,40 +230,58 @@ async fn edit_form(
     session: &UserSession,
     user: LoggedUser,
 ) -> Result<status::Custom<Template>> {
-    // Get the article's id if any.
-    let article_id = db.articles.id_by_name(&article_name)?;
+    // Get the article's id if it already exists.
+    let article_id = db.article_id_by_name(&article_name).await?;
 
     let AddRevRequest {
         title: new_title,
         content: new_content,
     } = form.into_inner();
 
-    // Here we verify if the request is even valid
-    // TODO express this better somehow
-    let new_name = if let Some(new_name) = dbg!(new_title.as_deref()) {
-        if article_id.is_none() || article_name == "Main" {
-            // This is not allowed. Re-render editing page.
-            let context = NewRevContext {
-                site_name: &cfg.site_name,
-                main_page: article_name == "Main",
-                article_name,
-                user,
-                old_content: new_content,
-                new_article: article_id.is_none(),
-                invalid_name_change: true,
-            };
-            return Ok(status::Custom(
-                Status::BadRequest,
-                Template::render("article_edit", context),
-            ));
-        } else if new_name != article_name {
-            // Change the article's title
-            // This would error if we tried to call it with the same name
+    let mut txn = db.begin().await?;
 
-            // The unwrap is safe because we checked .is_none() above
-            // I would prefer to do it differently tho
-            db.articles.change_name(article_id.unwrap(), new_name)?;
-            true
+    // Here we check if the "new_name" is valid and also change it in case
+    // the article already exists. If it doesn't, we check if there is an
+    // article with new_name as the name and also prevent that.
+    let new_name = if let Some(new_name) = new_title.as_deref() {
+        if new_name != article_name {
+            let invalid_request = || {
+                let context = NewRevContext {
+                    site_name: &cfg.site_name,
+                    default_path: &cfg.default_path,
+                    article_name: article_name.clone(),
+                    user: user.clone(),
+                    old_content: new_content.clone(),
+                    new_article: article_id.is_none(),
+                    invalid_name_change: true,
+                };
+                status::Custom(
+                    Status::BadRequest,
+                    Template::render("article_edit", context),
+                )
+            };
+            if let Some(article_id) = article_id {
+                // Change the article's title
+                let res = db::articles::change_name(&mut txn, article_id, new_name).await;
+                // This will trigger the constraint if the user tries to replace an existing article.
+                if let Err(Error::SqlxError(sqlx::Error::Database(err))) = &res {
+                    if err.constraint() == Some("article_name_unique") {
+                        return Ok(invalid_request());
+                    }
+                }
+                res?;
+                true
+            } else {
+                // We catch the same error as above (which would happen further down on article
+                // creation) a bit earlier here.
+                if db::articles::id_by_name(&mut txn, new_name)
+                    .await?
+                    .is_some()
+                {
+                    return Ok(invalid_request());
+                }
+                false
+            }
         } else {
             false
         }
@@ -252,55 +289,27 @@ async fn edit_form(
         false
     };
 
-    // And then we acquire the id we're actually working with
-    let article_id = match article_id {
-        Some(id) => id,
-        None => db.articles.create(&article_name)?,
+    let article_name = new_title.as_deref().unwrap_or(&article_name);
+    let (RevId(article_id, rev_id), rev) = if let Some(article_id) = article_id {
+        db::articles::add_revision(&mut txn, article_id, session.user_id, &new_content).await?
+    } else {
+        db::articles::create(&mut txn, article_name, &new_content, session.user_id).await?
     };
 
-    let res = db
-        .articles
-        .add_revision(article_id, session.user_id, &new_content);
+    txn.commit().await?;
 
-    let article_name = new_title.as_deref().unwrap_or(&article_name);
-    let mut context = json! {{
+    let context = json! {{
         "site_name": &cfg.site_name,
-        "main_page": article_name == "Main",
+        "default_path": &cfg.default_path,
         "article_name": article_name,
         "user": user,
-        "rev_id": null,
+        "rev_id": rev_id,
         "new_name": new_name,
     }};
 
-    if matches!(res, Err(Error::IdenticalNewRevision)) {
-        // This is the case where we early return a success. Huh.
-        // This is because we technically succeeded since the article
-        // looks like the user wants it to.
+    // TODO do we really want to return on error here?
+    search_index.add_or_update_article(article_id, article_name, &new_content, rev.date)?;
 
-        if new_name {
-            // We still need to update the article's name with the content.
-            // TODO do we really want to return on error here?
-            search_index.add_or_update_article(
-                article_id,
-                article_name,
-                &new_content,
-                Utc::now(),
-            )?;
-            // Make sure the new name is saved
-            db.flush().await?;
-        }
-    } else {
-        let (rev_id, rev) = res?;
-        context
-            .as_object_mut()
-            // This is ok since context is always an Object (see declaration)
-            .unwrap()
-            .insert("rev_id".into(), rev_id.rev_number().0.into());
-        db.flush().await?;
-        // Update the article's content and possibly its name, we don't care here.
-        // TODO do we really want to return on error here?
-        search_index.add_or_update_article(article_id, article_name, &new_content, rev.date)?;
-    }
     Ok(status::Custom(
         Status::Ok,
         Template::render("article_edit_success", context),
@@ -317,74 +326,54 @@ fn redirect_to_login_post(_article_name: String) -> Redirect {
 }
 
 #[get("/<article_name>/revs")]
-fn revs(
+async fn revs(
     db: &State<Db>,
     cfg: &State<Config>,
     article_name: String,
     user: Option<LoggedUser>,
 ) -> Result<status::Custom<Template>> {
-    if let Some(id) = db.articles.id_by_name(&article_name)? {
-        let revs = db.articles.list_revisions(id)?;
-        let mut revs_with_author = Vec::with_capacity(revs.len());
-        for (id, rev) in revs.into_iter() {
-            let author = db.users.name_by_id(rev.author_id)?;
-            revs_with_author.push((id.rev_number(), rev, author));
-        }
-        let context = json! {{
-            "site_name": &cfg.site_name,
-            "main_page": article_name == "Main",
-            "article_name": article_name,
-            "user": user,
-            "revs": revs_with_author,
-        }};
-        Ok(status::Custom(
-            Status::Ok,
-            Template::render("article_revs", context),
-        ))
-    } else {
-        Ok(render_404(&*cfg, &article_name, &user))
+    let revisions = db::articles::list_revisions(db, &article_name).await?;
+    if revisions.is_empty() {
+        return Ok(render_404(&*cfg, &article_name, &user));
     }
+    let context = json! {{
+        "site_name": &cfg.site_name,
+        "default_path": &cfg.default_path,
+        "article_name": article_name,
+        "user": user,
+        "revs": revisions,
+    }};
+    Ok(status::Custom(
+        Status::Ok,
+        Template::render("article_revs", context),
+    ))
 }
 
 // TODO: You can manually put in a rev_id from a different article and you'll
 // get that article instead of the current one, but with the wrong title. lol.
 #[get("/<article_name>/rev/<rev_id>")]
-fn rev(
+async fn rev(
     db: &State<Db>,
     cfg: &State<Config>,
     article_name: String,
-    rev_id: Id,
+    rev_id: i64,
     user: Option<LoggedUser>,
 ) -> Result<status::Custom<Template>> {
-    if let Some(article_id) = db.articles.id_by_name(&article_name)? {
-        let rev_id = match db.articles.verified_rev_id(article_id, rev_id) {
-            Ok(id) => id,
-            Err(Error::RevisionUnknown(_id, rev_number)) => {
-                let context = json! {{
-                    "site_name": &cfg.site_name,
-                    "article_name": article_name,
-                    "rev_number": rev_number,
-                    "user": user,
-                }};
-                return Ok(status::Custom(
-                    Status::NotFound,
-                    Template::render("article_404", context),
-                ));
-            }
-            Err(e) => return Err(e),
-        };
-        let Revision {
+    if let Some(rev) = db::articles::get_revision(db, &article_name, rev_id).await? {
+        let DisplayRevision {
+            rev_id,
+            author_name,
             content,
-            author_id,
-            date,
-        } = db.articles.get_revision(rev_id)?;
+            created,
+        } = rev;
+        let date = DateTime::from_utc(created, Utc);
         let context = RevContext {
             site_name: &cfg.site_name,
-            author: db.users.name_by_id(author_id)?,
-            main_page: article_name == "Main",
+            default_path: &cfg.default_path,
+            author: author_name,
             article_name,
             user,
-            rev_id: rev_id.rev_number(),
+            rev_id,
             content: markdown_to_html(&content),
             date,
             specific_rev: true,

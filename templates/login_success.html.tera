@@ -1,10 +1,13 @@
 {% extends "index" %}
+{% block extra_head %}
+<meta http-equiv="Refresh" content="3; url='{{ default_path }}'" />
+{% endblock %}
 {% block body %}
 <section class="section">
   <div class="container">
     <h1 class="title">Success!</h1>
     <p>
-      Your have successfully logged in. You can now go to the <a href="/Main">Main Page</a>
+      Your have successfully logged in. You can now go to the <a href="{{ default_path }}">Main Page</a>
       and start exploring from there.
     </p>
   </div>

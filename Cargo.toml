@@ -6,7 +6,6 @@ edition = "2018"
 
 
 [dependencies]
-sled = "0.34"
 thiserror = "1"
 serde = { version="1", features=["derive"] }
 serde_json = "1"
@@ -24,6 +23,7 @@ base64 = "0.13"
 tantivy = "0.15"
 dashmap = "4"
 parking_lot = "0.11"
+figment = "0.10"
 
 [dependencies.rocket]
 version = "0.5.0-rc.1"
@@ -33,7 +33,20 @@ features = ["uuid"]
 version = "0.1.0-rc.1"
 features = ["tera"]
 
+[dependencies.sqlx]
+version = "0.5"
+default-features = false
+features = [
+    "runtime-tokio-rustls",
+    "postgres",
+    "macros",
+    "migrate",
+    "offline",
+    "chrono",
+    "uuid",
+]
+
 [dev-dependencies]
-lipsum = "0.8"
 serde_urlencoded = "0.7"
 scraper = "0.12"
+serial_test = "0.5"

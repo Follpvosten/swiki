@@ -2,6 +2,14 @@ kind: pipeline
 type: docker
 name: default
 
+services:
+  - name: postgres
+    image: postgres:13-alpine
+    environment:
+      POSTGRES_USER: swiki
+      POSTGRES_DB: swiki
+      POSTGRES_PASSWORD: abc123
+
 steps:
   - name: restore cache
     image: drillster/drone-volume-cache
@@ -14,11 +22,15 @@ steps:
         - ./target
         - ./cargo-home
 
-  - name: test
-    image: rust:1-slim
+  - name: migrate and test
+    image: rust:1
     environment:
       CARGO_HOME: ./cargo-home
+      DATABASE_URL: postgres://swiki:abc123@postgres:5432/swiki
+      ROCKET_DATABASE_URL: postgres://swiki:abc123@postgres:5432/swiki
     commands:
+      - cargo install sqlx-cli --no-default-features --features postgres
+      - cargo sqlx migrate run
       - cargo test
 
   - name: rebuild cache

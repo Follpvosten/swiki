@@ -1,4 +1,7 @@
 {% extends "index" %}
+{% block extra_head %}
+<meta http-equiv="Refresh" content="3; url='{{ default_path }}'" />
+{% endblock %}
 {% block body %}
 <section class="section">
     <div class="container">

@@ -3,9 +3,10 @@ use rocket::{
     local::blocking::{Client, LocalResponse},
 };
 use scraper::Selector;
+use serial_test::serial;
 use uuid::Uuid;
 
-use super::{rocket, seed_db, Result};
+use super::rocket;
 use crate::{
     articles::AddRevRequest,
     settings::AdminSettings,
@@ -13,16 +14,18 @@ use crate::{
     ArticleIndex, Cache, Db,
 };
 
-const USERNAME: &str = "User";
-const PASSWORD: &str = "Password123";
+const PASSWORD: &str = "abc123";
 
-fn db() -> Result<Db> {
-    let sled_db = sled::Config::default().temporary(true).open()?;
-    Db::load_or_create(sled_db).and_then(seed_db)
-}
 fn client() -> Client {
-    let db = db().unwrap();
-    Client::tracked(rocket(db).unwrap()).expect("failed to create rocket client")
+    Client::tracked(rocket()).expect("failed to create rocket client")
+}
+fn block_on<F, R>(fut: F) -> R
+where
+    F: std::future::Future<Output = R>,
+{
+    rocket::tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(fut)
 }
 fn content_type_form() -> ContentType {
     ContentType::new("application", "x-www-form-urlencoded")
@@ -109,11 +112,11 @@ fn login(client: &Client, username: &str, password: &str) {
 
 /// Login with a default username and password.
 /// Useful if you don't care about the user and just need a session.
-fn register_and_login(client: &Client) {
+fn register_and_login(client: &Client, username: &str) {
     // Register a default account
-    register_account(client, USERNAME, PASSWORD);
+    register_account(client, username, PASSWORD);
     // Then we log in, which should give us the appropriate cookies
-    login(client, USERNAME, PASSWORD);
+    login(client, username, PASSWORD);
 }
 fn logout(client: &Client) {
     let response = client.get("/u/logout").dispatch();
@@ -126,6 +129,7 @@ fn launch() {
 }
 
 #[test]
+#[serial]
 fn redirects() {
     let client = client();
     let assert_redirect = |uri: &str, location| {
@@ -154,7 +158,7 @@ fn redirects() {
     assert_no_redirect("/u/login");
     assert_no_redirect("/u/register");
     // Login first to check the u/login and u/register redirects
-    register_and_login(&client);
+    register_and_login(&client, "redirects");
     assert_redirect("/u/login", "/Main");
     assert_redirect("/u/register", "/Main");
     // Editing an article should be possible now
@@ -168,12 +172,13 @@ fn redirects() {
 }
 
 #[test]
+#[serial]
 fn register_login_logout() {
     let client = client();
     // There should be no cookies before logging in
     assert_eq!(client.cookies().iter().count(), 0);
     // There's one cookie, the session id, when you're logged in
-    register_and_login(&client);
+    register_and_login(&client, "login logout");
     assert_eq!(client.cookies().iter().count(), 1);
     assert!(client.cookies().get("session_id").is_some());
     // After logging out, no more cookies should be present
@@ -182,19 +187,20 @@ fn register_login_logout() {
 }
 
 #[test]
+#[serial]
 fn basic_article_routes() {
     let client = client();
     let assert_status = |uri: &str, status: Status| {
         let response = client.get(uri).dispatch();
         assert_eq!(response.status(), status, "{}", uri);
     };
-    // At the start, we only know one article that exists
     let ok = Status::Ok;
     let notfound = Status::NotFound;
+    // At the start, the Main page doesn't exist, but it's a special case
     assert_status("/Main", ok);
-    assert_status("/Main/revs", ok);
-    // There's only a rev 0 as well
-    assert_status("/Main/rev/0", ok);
+    // You cannot look at its revisions though, as there are none.
+    assert_status("/Main/revs", notfound);
+    assert_status("/Main/rev/1", notfound);
     // Search should always succeed
     assert_status("/search?q=blah", ok);
     // Same for the "create article" helper
@@ -206,41 +212,19 @@ fn basic_article_routes() {
     // And a combination of those
     assert_status("/Blahblub/revs/1", notfound);
     // Login so we can see the edit page
-    register_and_login(&client);
+    register_and_login(&client, "basic article routes");
     assert_status("/Main/edit", ok);
 }
 
 #[test]
+#[serial]
 fn creating_and_editing_articles() {
     let client = client();
     // We need to be logged in for this
-    register_and_login(&client);
+    register_and_login(&client, "creating and editing");
 
     // Let's keep a reference to the db around, it will help
     let db = client.rocket().state::<Db>().unwrap();
-
-    // Adding a new article, but trying to submit two different names fails
-    // The reason here is that when you create an article and change its name,
-    // you might accidentally override an existing article without noticing.
-    let response = post_form(
-        &client,
-        "/New_Article/edit",
-        AddRevRequest {
-            title: Some("Other Article".into()),
-            content: "doesn't matter".into(),
-        },
-    );
-    assert_eq!(response.status(), Status::BadRequest);
-    // You can't change the name of the main page.
-    let response = post_form(
-        &client,
-        "/Main/edit",
-        AddRevRequest {
-            title: Some("Name".into()),
-            content: "doesn't matter".into(),
-        },
-    );
-    assert_eq!(response.status(), Status::BadRequest);
 
     // Create an actual new article
     let response = post_form(
@@ -253,9 +237,7 @@ fn creating_and_editing_articles() {
     );
     assert_eq!(response.status(), Status::Ok);
     // We will want its id to check for the changes
-    let article_id = db
-        .articles
-        .id_by_name("MyNewArticle")
+    let article_id = block_on(db.article_id_by_name("MyNewArticle"))
         .unwrap()
         .expect("Inserted article's id not found");
     // Change its name (just removing the My)
@@ -263,7 +245,7 @@ fn creating_and_editing_articles() {
         &client,
         "/MyNewArticle/edit",
         AddRevRequest {
-            title: Some("NewArticle".into()),
+            title: Some("ANewArticle".into()),
             content: "Some content blah blah blah".into(),
         },
     );
@@ -272,19 +254,19 @@ fn creating_and_editing_articles() {
     // Verify that the old name is 404 and the new one is 200
     let response = client.get("/MyNewArticle").dispatch();
     assert_eq!(response.status(), Status::NotFound);
-    let response = client.get("/NewArticle").dispatch();
+    let response = client.get("/ANewArticle").dispatch();
     assert_eq!(response.status(), Status::Ok);
 
     // Verify a reverse-lookup of the new name also works
     assert_eq!(
-        db.articles.id_by_name("NewArticle").unwrap(),
+        block_on(db.article_id_by_name("ANewArticle")).unwrap(),
         Some(article_id)
     );
     // While we're at it, make sure the content is right
     assert_eq!(
-        db.articles
-            .get_current_content(article_id)
+        block_on(db.get_current_rev("ANewArticle"))
             .unwrap()
+            .map(|r| r.content)
             .as_deref(),
         Some("Some content blah blah blah")
     );
@@ -292,25 +274,25 @@ fn creating_and_editing_articles() {
     // Change the content
     let response = post_form(
         &client,
-        "/NewArticle/edit",
+        "/ANewArticle/edit",
         AddRevRequest {
-            title: Some("NewArticle".into()),
+            title: Some("ANewArticle".into()),
             content: "Some *new*, **shiney** content! blah blah blah!".into(),
         },
     );
     assert_eq!(response.status(), Status::Ok);
     // Verify the new content
     assert_eq!(
-        db.articles
-            .get_current_content(article_id)
+        block_on(db.get_current_rev("ANewArticle"))
             .unwrap()
+            .map(|r| r.content)
             .as_deref(),
         Some("Some *new*, **shiney** content! blah blah blah!")
     );
     // Change both
     let response = post_form(
         &client,
-        "/NewArticle/edit",
+        "/ANewArticle/edit",
         AddRevRequest {
             title: Some("New_Article".into()),
             content: "The same old content again blah blah blah".into(),
@@ -319,21 +301,21 @@ fn creating_and_editing_articles() {
     assert_eq!(response.status(), Status::Ok);
 
     // This dance again
-    let response = client.get("/NewArticle").dispatch();
+    let response = client.get("/ANewArticle").dispatch();
     assert_eq!(response.status(), Status::NotFound);
     let response = client.get("/New_Article").dispatch();
     assert_eq!(response.status(), Status::Ok);
 
     // Verify both
     assert_eq!(
-        db.articles.id_by_name("New_Article").unwrap(),
+        block_on(db.article_id_by_name("New_Article")).unwrap(),
         Some(article_id)
     );
     // While we're at it, make sure the content is right
     assert_eq!(
-        db.articles
-            .get_current_content(article_id)
+        block_on(db.get_current_rev("New_Article"))
             .unwrap()
+            .map(|r| r.content)
             .as_deref(),
         Some("The same old content again blah blah blah")
     );
@@ -351,72 +333,7 @@ fn creating_and_editing_articles() {
 }
 
 #[test]
-fn admin_permissions_and_settings() {
-    let client = client();
-    let db = client.rocket().state::<Db>().unwrap();
-    // We create two users, one admin and one non-admin, to see if the admin
-    // flags does its job
-    register_account(&client, "Admin", "admin's cool password");
-    // Only the first account should be an admin
-    register_account(&client, "User", "unprivileged user's password");
-    // Verify this
-    let admin_id = db.users.id_by_name("Admin").unwrap().unwrap();
-    let user_id = db.users.id_by_name("User").unwrap().unwrap();
-    assert!(db.users.is_admin(admin_id).unwrap());
-    assert!(!db.users.is_admin(user_id).unwrap());
-    // Now we check if it's actually applied
-    // Log in as admin and change settings
-    let admin_form_selector = Selector::parse("form[action='/settings/admin']").unwrap();
-    login(&client, "Admin", "admin's cool password");
-    let client_page = client.get("/settings").dispatch().into_string().unwrap();
-    let document = scraper::Html::parse_document(&client_page);
-    // Verify that we have the admin form
-    assert!(document.select(&admin_form_selector).next().is_some());
-    // Now send a change to the settings (registration is on by default)
-    let response = post_form(
-        &client,
-        "/settings/admin",
-        AdminSettings {
-            registration_enabled: false,
-        },
-    );
-    assert_eq!(response.status(), Status::Ok);
-    // Send the same request again, just to be sure
-    let response = post_form(
-        &client,
-        "/settings/admin",
-        AdminSettings {
-            registration_enabled: false,
-        },
-    );
-    assert_eq!(response.status(), Status::Ok);
-    // Now we logout
-    logout(&client);
-    // Verify that the register page now redirects to /Main
-    let response = client.get("/u/register").dispatch();
-    assert_eq!(response.status(), Status::SeeOther);
-    assert_eq!(response.headers().get_one("Location"), Some("/Main"));
-
-    // Now we log in as the non-admin user
-    login(&client, "User", "unprivileged user's password");
-    // Verify that the admin section is not there
-    let client_page = client.get("/settings").dispatch().into_string().unwrap();
-    let document = scraper::Html::parse_document(&client_page);
-    assert!(document.select(&admin_form_selector).next().is_none());
-    // Trying to change the admin settings as a normal user should fail and redirect
-    // TODO: Maybe this should return a good 403 error page instead?
-    let response = post_form(
-        &client,
-        "/settings/admin",
-        AdminSettings {
-            registration_enabled: false,
-        },
-    );
-    assert_eq!(response.status(), Status::SeeOther);
-    assert_eq!(response.headers().get_one("Location"), Some("/settings"));
-}
-
-#[test]
+#[serial]
 fn search() {
     let client = client();
     // Helper to reload the search index
@@ -429,7 +346,7 @@ fn search() {
             .reload()
             .unwrap();
     };
-    register_and_login(&client);
+    register_and_login(&client, "search");
     // To get some value to compare to, we just note down the length of the search page
     let first_body_length = client
         .get("/search?q=Baguette")
@@ -500,6 +417,7 @@ fn search() {
 }
 
 #[test]
+#[serial]
 fn failed_register() {
     let client = client();
     // We'll test all of the ways registering can fail, oh boy
@@ -620,4 +538,88 @@ fn failed_register() {
     };
     let html = get_html(&request);
     assert_help_text(&html, "Error, please try again!");
+}
+
+#[test]
+#[serial]
+fn admin_permissions_and_settings() {
+    let client = client();
+    let db = client.rocket().state::<Db>().unwrap();
+    async fn load_admin(db: &Db) -> Option<String> {
+        sqlx::query_scalar!(r#"SELECT name FROM "user" WHERE is_admin = TRUE"#)
+            .fetch_optional(&db.pool)
+            .await
+            .unwrap()
+    }
+    let admin = match block_on(load_admin(db)) {
+        Some(name) => name,
+        None => {
+            register_account(&client, "Admin", PASSWORD);
+            "Admin".into()
+        }
+    };
+    // Only the first account should be an admin
+    register_account(&client, "User", PASSWORD);
+    // Now we check if the admin flag actually gets applied
+    // Log in as admin and change settings
+    let admin_form_selector = Selector::parse("form[action='/settings/admin']").unwrap();
+    login(&client, &admin, PASSWORD);
+    let client_page = client.get("/settings").dispatch().into_string().unwrap();
+    let document = scraper::Html::parse_document(&client_page);
+    // Verify that we have the admin form
+    assert!(document.select(&admin_form_selector).next().is_some());
+    // Now send a change to the settings (registration is on by default)
+    let response = post_form(
+        &client,
+        "/settings/admin",
+        AdminSettings {
+            registration_enabled: false,
+        },
+    );
+    assert_eq!(response.status(), Status::Ok);
+    // Send the same request again, just to be sure
+    let response = post_form(
+        &client,
+        "/settings/admin",
+        AdminSettings {
+            registration_enabled: false,
+        },
+    );
+    assert_eq!(response.status(), Status::Ok);
+    // Now we logout
+    logout(&client);
+    // Verify that the register page now redirects to /Main
+    let response = client.get("/u/register").dispatch();
+    assert_eq!(response.status(), Status::SeeOther);
+    assert_eq!(response.headers().get_one("Location"), Some("/Main"));
+
+    // Now we log in as the non-admin user
+    login(&client, "User", PASSWORD);
+    // Verify that the admin section is not there
+    let client_page = client.get("/settings").dispatch().into_string().unwrap();
+    let document = scraper::Html::parse_document(&client_page);
+    assert!(document.select(&admin_form_selector).next().is_none());
+    // Trying to change the admin settings as a normal user should fail and redirect
+    // TODO: Maybe this should return a good 403 error page instead?
+    let response = post_form(
+        &client,
+        "/settings/admin",
+        AdminSettings {
+            registration_enabled: false,
+        },
+    );
+    assert_eq!(response.status(), Status::SeeOther);
+    assert_eq!(response.headers().get_one("Location"), Some("/settings"));
+
+    logout(&client);
+    // Reset the admin flag back to normal, just to be sure
+    login(&client, &admin, PASSWORD);
+    let response = post_form(
+        &client,
+        "/settings/admin",
+        AdminSettings {
+            registration_enabled: true,
+        },
+    );
+    assert_eq!(response.status(), Status::Ok);
 }

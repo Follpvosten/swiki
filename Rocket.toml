@@ -1,7 +1,12 @@
 [default]
-port = 8080
+port = 8480
 template_dir = "templates"
 site_name = "Simple Wiki"
+main_page = "Main"
+# Default path where you'll be redirected to from everywhere.
+# Will default to "/" + main_page if not set.
+#default_path = "/Main"
+database_url = "postgres://swiki:abc123@localhost:5433/swiki"
 
 [debug]
 address = "127.0.0.1"

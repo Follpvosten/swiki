@@ -13,23 +13,13 @@
     <form action="/{{ article_name}}/edit" method="POST">
       <div class="field">
         <label class="label" for="title">Article title:</label>
-
-        {% if main_page or new_article %}
-        <div class="control">
-          <input class="input" type="text" id="title" value="{{ article_name }}" disabled>
-        </div>
-        <p class="help{% if invalid_name_change %} is-danger{% endif %}">
-          {% if main_page %}
-          The main page's
-          {% else %}
-          A new article's
-          {% endif %}
-          name cannot be changed.
-        </p>
-        {% else %}
         <div class="control">
           <input class="input" type="text" id="title" name="title" value="{{ article_name }}">
         </div>
+        {% if invalid_name_change %}
+        <p class="help is-danger">
+          This name is already taken! Please choose a different one.
+        </p>
         {% endif %}
       </div>
       <div class="field">

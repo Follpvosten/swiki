@@ -7,21 +7,17 @@ use rocket::{
     Request,
 };
 use rocket_dyn_templates::{tera, Template};
-use sled::transaction::TransactionError;
 use tantivy::{query::QueryParserError, TantivyError};
+use uuid::Uuid;
 
-use crate::database::{
-    articles::{rev_id::RevId, ArticleId},
-    users::UserId,
-    Id,
-};
+use crate::db::articles::RevId;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Database error: {0}")]
-    SledError(#[from] sled::Error),
-    #[error("Transaction error: {0}")]
-    TransactionError(#[from] TransactionError),
+    #[error("Error reading config file: {0}")]
+    FigmentError(#[from] figment::Error),
+    #[error("Error accessing database: {0}")]
+    SqlxError(#[from] sqlx::Error),
     #[error("Error hashing password: {0}")]
     Argon2Error(#[from] argon2::Error),
     #[error("Data could not be (de)serialized: {0}")]
@@ -30,8 +26,10 @@ pub enum Error {
     UserAlreadyExists(String),
     #[error("Unknown user: {0}")]
     UserNotFound(String),
-    #[error("Revision '{0:?}' does not exist")]
-    RevisionUnknown(ArticleId, Id),
+    #[error("Wrong password")]
+    WrongPassword,
+    #[error("Revision '{1:?}' on article {0:1} does not exist")]
+    RevisionUnknown(Uuid, i64),
     #[error("New content is identical to the previous revision")]
     IdenticalNewRevision,
     #[error("Error changing article name: Article {0} already exists")]
@@ -40,12 +38,8 @@ pub enum Error {
     InvalidIdData(#[from] TryFromSliceError),
     #[error("Database is inconsistent: Revision {0:?} is missing fields")]
     RevisionDataInconsistent(RevId),
-    #[error("User data inconsistent: user with id {0:?} doesn't have a name")]
-    UserDataInconsistent(UserId),
     #[error("Database returned inconsistent data: article id {0:?} not found")]
-    ArticleDataInconsistent(ArticleId),
-    #[error("User id {0:?} does not exist or doesn't have a password")]
-    PasswordNotFound(UserId),
+    ArticleDataInconsistent(Uuid),
     #[error("Error rendering template: {0}")]
     TemplateError(#[from] tera::Error),
     #[error("Captcha error; please retry!")]
@@ -62,46 +56,27 @@ pub enum Error {
     QueryParserError(#[from] QueryParserError),
 }
 
-// Unwrap more specific errors from transactions.
-impl From<TransactionError<Error>> for Error {
-    fn from(s: TransactionError<Error>) -> Self {
-        match s {
-            TransactionError::Abort(e) => e,
-            TransactionError::Storage(e) => Error::SledError(e),
-        }
-    }
-}
-impl From<TransactionError<()>> for Error {
-    fn from(s: TransactionError<()>) -> Self {
-        match s {
-            TransactionError::Storage(e) => Error::SledError(e),
-            TransactionError::Abort(_) => unreachable!(),
-        }
-    }
-}
-
 impl Error {
     pub fn status(&self) -> Status {
         use Error::*;
         match self {
-            SledError(_)
+            FigmentError(_)
+            | SqlxError(_)
             | CaptchaPngError
             | DatabaseRequestGuardFailed
             | Argon2Error(_)
             | BincodeError(_)
-            | TransactionError(_)
             | InvalidIdData(_)
-            | UserDataInconsistent(_)
             | RevisionDataInconsistent(_)
             | ArticleDataInconsistent(_)
             | TemplateError(_)
             | TokioJoinError(_)
-            | PasswordNotFound(_)
             | TantivyError(_)
             | QueryParserError(_) => Status::InternalServerError,
-            UserAlreadyExists(_) | IdenticalNewRevision | DuplicateArticleName(_) => {
-                Status::BadRequest
-            }
+            UserAlreadyExists(_)
+            | IdenticalNewRevision
+            | DuplicateArticleName(_)
+            | WrongPassword => Status::BadRequest,
             UserNotFound(_) | RevisionUnknown(_, _) | CaptchaNotFound => Status::NotFound,
         }
     }
@@ -130,6 +105,7 @@ impl<'r> Responder<'r, 'static> for Error {
         let status = self.status();
         let context = serde_json::json! {{
             "site_name": &cfg.site_name,
+            "default_path": &cfg.default_path,
             "status": status.to_string(),
             "error": self.to_string(),
         }};

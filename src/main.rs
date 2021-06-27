@@ -1,18 +1,22 @@
 #![recursion_limit = "512"]
 
-use rocket::{fairing::AdHoc, fs::FileServer, response::Redirect};
+use rocket::{fairing::AdHoc, fs::FileServer, response::Redirect, Build, Rocket, State};
 use rocket_dyn_templates::Template;
+use serde::Deserialize;
 
 mod cache;
 pub use cache::Cache;
-mod database;
-pub use database::Db;
+mod db;
+pub use db::Db;
 mod search;
 pub use search::ArticleIndex;
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, Deserialize)]
 pub struct Config {
     pub site_name: String,
+    pub main_page: String,
+    #[serde(default)]
+    pub default_path: String,
 }
 
 mod error;
@@ -25,56 +29,74 @@ mod settings;
 mod users;
 
 #[rocket::get("/")]
-fn index() -> Redirect {
-    Redirect::to("/Main")
+fn index(cfg: &State<Config>) -> Redirect {
+    Redirect::to(cfg.default_path.clone())
 }
 
-fn seed_db(db: Db) -> Result<Db> {
-    if db.articles.id_by_name("Main")?.is_none() {
-        let author_id = match db.users.id_by_name("System")? {
-            Some(id) => id,
-            None => db.users.register("System", "todo lol")?,
-        };
-        // Create a first page if we don't have one.
-        let article_id = db.articles.create("Main")?;
-
-        db.articles.add_revision(
-            article_id,
-            author_id,
-            r#"Welcome to your new wiki!
-
-To edit this main page, go to [Main/edit].  
-You can look at past revisions at [Main/revs].  
-Have fun!"#,
-        )?;
-    }
-    Ok(db)
-}
-
-fn default_db() -> Result<Db> {
-    let sled_db = sled::open("wiki.db")?;
-    Db::load_or_create(sled_db).and_then(seed_db)
-}
-
-fn rocket(db: Db) -> Result<rocket::Rocket<rocket::Build>> {
-    Ok(rocket::build()
+fn rocket() -> Rocket<Build> {
+    rocket::build()
         .mount("/", rocket::routes![index])
         .mount("/", articles::routes())
         .mount("/u", users::routes())
         .mount("/settings", settings::routes())
         .mount("/res", FileServer::from("static"))
-        .manage(ArticleIndex::new(&db)?)
         .manage(Cache::default())
-        .manage(db)
+        .attach(AdHoc::try_on_ignite("Read config", |rocket| async {
+            let mut config: Config = match rocket.figment().extract() {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("Failed to parse config: {}", e);
+                    return Err(rocket);
+                }
+            };
+            if config.default_path.is_empty() {
+                config.default_path = "/".to_string() + &config.main_page;
+            }
+            Ok(rocket.manage(config))
+        }))
+        .attach(AdHoc::try_on_ignite("Connect to db", |rocket| async {
+            #[derive(Deserialize)]
+            struct DbConfig {
+                database_url: String,
+            }
+            let config: DbConfig = match rocket.figment().extract() {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("Failed to read database url: {}", e);
+                    return Err(rocket);
+                }
+            };
+            let db = match Db::try_connect(&config.database_url).await {
+                Ok(db) => db,
+                Err(e) => {
+                    log::error!("Failed to connect to database: {}", e);
+                    return Err(rocket);
+                }
+            };
+            Ok(rocket.manage(db))
+        }))
+        .attach(AdHoc::try_on_ignite(
+            "Create search index",
+            |rocket| async {
+                // I think I can unwrap this because this fairing will only run if the first one succeeds.
+                let db = rocket.state::<Db>().unwrap();
+                let index = match ArticleIndex::new(db).await {
+                    Ok(index) => index,
+                    Err(e) => {
+                        log::error!("Failed to create article index: {}", e);
+                        return Err(rocket);
+                    }
+                };
+                Ok(rocket.manage(index))
+            },
+        ))
         .attach(Template::fairing())
-        .attach(AdHoc::config::<Config>()))
 }
 
 #[rocket::main]
 async fn main() -> Result<()> {
     loop {
-        let db = default_db()?;
-        if let Err(e) = rocket(db)?.launch().await {
+        if let Err(e) = rocket().launch().await {
             println!("Rocket crashed: {:?}", e);
             continue;
         }

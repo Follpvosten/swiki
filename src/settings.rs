@@ -3,7 +3,7 @@ use rocket_dyn_templates::Template;
 use serde_json::json;
 
 use crate::{
-    database::users::{LoggedAdmin, LoggedUser},
+    db::users::{LoggedAdmin, LoggedUser},
     Config, Db, Result,
 };
 
@@ -12,13 +12,14 @@ pub fn routes() -> Vec<rocket::Route> {
 }
 
 #[get("/")]
-fn panel_page(db: &State<Db>, cfg: &State<Config>, user: LoggedUser) -> Result<Template> {
+async fn panel_page(db: &State<Db>, cfg: &State<Config>, user: LoggedUser) -> Result<Template> {
     let mut context = json! {{
         "site_name": &cfg.site_name,
+        "default_path": &cfg.default_path,
         "user": user,
     }};
     if user.is_admin() {
-        let registration_enabled = db.registration_enabled()?;
+        let registration_enabled = db.registration_enabled().await?;
         context.as_object_mut().unwrap().extend(vec![(
             "registration_enabled".into(),
             registration_enabled.into(),
@@ -39,7 +40,7 @@ pub struct AdminSettings {
 }
 
 #[post("/admin", data = "<form>")]
-fn admin_settings(
+async fn admin_settings(
     db: &State<Db>,
     cfg: &State<Config>,
     form: Form<AdminSettings>,
@@ -50,10 +51,11 @@ fn admin_settings(
     let AdminSettings {
         registration_enabled,
     } = form.into_inner();
-    if db.registration_enabled()? != registration_enabled {
-        db.set_registration_enabled(registration_enabled)?;
+    if db.registration_enabled().await? != registration_enabled {
+        db.set_registration_enabled(registration_enabled).await?;
         let context = json! {{
             "site_name": &cfg.site_name,
+            "default_path": &cfg.default_path,
             "user": admin,
             "changed": true,
         }};
@@ -61,6 +63,7 @@ fn admin_settings(
     } else {
         let context = json! {{
             "site_name": &cfg.site_name,
+            "default_path": &cfg.default_path,
             "user": admin,
             "changed": false,
         }};

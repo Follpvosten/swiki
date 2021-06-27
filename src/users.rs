@@ -9,10 +9,9 @@ use rocket::{
 use rocket_dyn_templates::Template;
 use serde_json::json;
 use uuid::Uuid;
-use zeroize::Zeroize;
 
 use crate::{
-    database::{
+    db::{
         users::{LoggedUser, UserSession},
         EnabledRegistration,
     },
@@ -67,6 +66,7 @@ async fn gen_captcha_and_id(cache: &Cache) -> Result<(Uuid, String)> {
 #[derive(Debug, serde::Serialize)]
 struct RegisterPageContext<'a> {
     site_name: &'a str,
+    default_path: &'a str,
     page_name: &'static str,
     username: Option<String>,
     captcha_base64: String,
@@ -80,6 +80,7 @@ impl<'a> Default for RegisterPageContext<'a> {
     fn default() -> Self {
         Self {
             site_name: "",
+            default_path: "",
             page_name: "Register",
             username: None,
             captcha_base64: Default::default(),
@@ -91,6 +92,15 @@ impl<'a> Default for RegisterPageContext<'a> {
         }
     }
 }
+impl<'a> From<&'a Config> for RegisterPageContext<'a> {
+    fn from(cfg: &'a Config) -> Self {
+        Self {
+            site_name: &cfg.site_name,
+            default_path: &cfg.default_path,
+            ..Default::default()
+        }
+    }
+}
 
 #[derive(Responder)]
 #[allow(clippy::large_enum_variant)]
@@ -98,6 +108,7 @@ enum TemplateResult {
     Template(Template),
     #[response(status = 400)]
     Error(Template),
+    #[response(status = 303)]
     Redirect(Redirect),
 }
 
@@ -111,15 +122,16 @@ async fn register_page(
     // If er is None, registration is disabled.
     // If session is Some, we're already logged in.
     if er.is_none() || session.is_some() {
-        return Ok(TemplateResult::Redirect(Redirect::to("/Main")));
+        return Ok(TemplateResult::Redirect(Redirect::to(
+            cfg.default_path.clone(),
+        )));
     }
     // Generate a captcha to include in the login form
     let (id, base64) = gen_captcha_and_id(&*cache).await?;
     let context = RegisterPageContext {
-        site_name: &cfg.site_name,
         captcha_base64: base64,
         captcha_uuid: id.to_string(),
-        ..Default::default()
+        ..From::from(&**cfg)
     };
     Ok(TemplateResult::Template(Template::render(
         "register", context,
@@ -148,11 +160,13 @@ async fn register_form(
     // If er is None, registration is disabled.
     // If session is Some, we're already logged in.
     if er.is_none() || session.is_some() {
-        return Ok(TemplateResult::Redirect(Redirect::to("/Main")));
+        return Ok(TemplateResult::Redirect(Redirect::to(
+            cfg.default_path.clone(),
+        )));
     }
     let RegisterRequest {
         username,
-        mut password,
+        password,
         pwd_confirm,
         captcha_id,
         captcha_solution,
@@ -160,7 +174,7 @@ async fn register_form(
 
     let (pwds_dont_match, username_taken, no_username, failed_captcha) = (
         password != pwd_confirm || password.is_empty(),
-        db.users.name_exists(&username)? || username == "register" || username == "login",
+        username == "register" || username == "login" || db.user_name_exists(&username).await?,
         username.is_empty(),
         !cache.validate_captcha(captcha_id, &captcha_solution),
     );
@@ -168,7 +182,6 @@ async fn register_form(
     if pwds_dont_match || username_taken || no_username || failed_captcha {
         let (id, base64) = gen_captcha_and_id(&*cache).await?;
         let context = RegisterPageContext {
-            site_name: &cfg.site_name,
             username: Some(username),
             captcha_base64: base64,
             captcha_uuid: id.to_string(),
@@ -176,17 +189,13 @@ async fn register_form(
             username_taken,
             no_username,
             failed_captcha,
-            ..Default::default()
+            ..From::from(&**cfg)
         };
         return Ok(TemplateResult::Error(Template::render("register", context)));
     }
     // If we're here, registration is successful
     // Register the user
-    db.users.register(&username, &password)?;
-    // Remove the password from RAM
-    password.zeroize();
-    // Make sure everything is stored on disk
-    db.flush().await?;
+    db.register_user(&username, password).await?;
     // Return some success messag
     Ok(TemplateResult::Template(Template::render(
         "register_success",
@@ -195,13 +204,14 @@ async fn register_form(
 }
 
 #[get("/login")]
-fn login_redirect(_session: &UserSession) -> Redirect {
-    Redirect::to("/Main")
+fn login_redirect(cfg: &State<Config>, _session: &UserSession) -> Redirect {
+    Redirect::to(cfg.default_path.clone())
 }
 #[get("/login", rank = 2)]
 fn login_page(cfg: &State<Config>) -> Template {
     let context = json! {{
         "site_name": &cfg.site_name,
+        "default_path": &cfg.default_path,
         "page_name": "Login",
     }};
     Template::render("login", context)
@@ -222,68 +232,66 @@ async fn login_form(
 ) -> Result<TemplateResult> {
     if session.is_some() {
         // No double logins
-        return Ok(TemplateResult::Redirect(Redirect::to("/Main")));
+        return Ok(TemplateResult::Redirect(Redirect::to(
+            cfg.default_path.clone(),
+        )));
     }
     #[derive(serde::Serialize)]
     struct LoginPageContext<'a> {
         site_name: &'a str,
+        default_path: &'a str,
         page_name: &'static str,
         username: Option<String>,
         username_unknown: bool,
         wrong_password: bool,
     }
-    let LoginRequest {
-        username,
-        mut password,
-    } = form.into_inner();
+    let LoginRequest { username, password } = form.into_inner();
 
-    let user_id = if let Some(id) = db.users.id_by_name(&username)? {
-        id
-    } else {
-        password.zeroize();
-        let context = LoginPageContext {
-            site_name: &cfg.site_name,
-            page_name: "Login",
-            username: Some(username),
-            username_unknown: true,
-            wrong_password: false,
-        };
-        return Ok(TemplateResult::Error(Template::render("login", context)));
-    };
-
-    if let Some(session) = db.users.try_login(user_id, &password)? {
-        password.zeroize();
-        // Everything went well?? Wuuuuut
-        // try_login creates a session, we'll want to save that
-        db.flush().await?;
-        // And save it on the client-side in the user's cookies
-        cookies.add(Cookie::new(
-            "session_id",
-            base64::encode(session.session_id.as_bytes()),
-        ));
-        // TODO: Do we also auto-login on registrations?
-        let is_admin = db.users.is_admin(user_id)?;
-        let context = json! {{
-            "site_name": &cfg.site_name,
-            "user": {
-                "name": &username,
-                "is_admin": is_admin,
-            },
-        }};
-        Ok(TemplateResult::Template(Template::render(
-            "login_success",
-            context,
-        )))
-    } else {
-        password.zeroize();
-        let context = LoginPageContext {
-            site_name: &cfg.site_name,
-            page_name: "Login",
-            username: Some(username),
-            username_unknown: false,
-            wrong_password: true,
-        };
-        Ok(TemplateResult::Error(Template::render("login", context)))
+    match db.try_login(&username, password).await {
+        Ok(session) => {
+            cookies.add(Cookie::new(
+                "session_id",
+                base64::encode(session.session_id.as_bytes()),
+            ));
+            // TODO: Somehow optimize this. Ideally we somehow return is_admin
+            // from try_login, or we find out if we actually need it here lol.
+            let is_admin = db.user_is_admin(session.user_id).await?;
+            let context = json! {{
+                "site_name": &cfg.site_name,
+                "default_path": &cfg.default_path,
+                "user": {
+                    "name": &username,
+                    "is_admin": is_admin,
+                },
+            }};
+            Ok(TemplateResult::Template(Template::render(
+                "login_success",
+                context,
+            )))
+        }
+        Err(Error::UserNotFound(_)) => {
+            let context = LoginPageContext {
+                site_name: &cfg.site_name,
+                default_path: &cfg.default_path,
+                page_name: "Login",
+                username: Some(username),
+                username_unknown: true,
+                wrong_password: false,
+            };
+            Ok(TemplateResult::Error(Template::render("login", context)))
+        }
+        Err(Error::WrongPassword) => {
+            let context = LoginPageContext {
+                site_name: &cfg.site_name,
+                default_path: &cfg.default_path,
+                page_name: "Login",
+                username: Some(username),
+                username_unknown: false,
+                wrong_password: true,
+            };
+            Ok(TemplateResult::Error(Template::render("login", context)))
+        }
+        Err(e) => Err(e),
     }
 }
 
@@ -298,15 +306,16 @@ async fn logout(
     cookies.remove(Cookie::named("session_id"));
     if let Some(session) = session {
         // And if it's still in the database, remove it from there as well
-        db.users.destroy_session(session.session_id)?;
-        db.flush().await?;
+        db.destroy_session(session.session_id).await?;
         Ok(TemplateResult::Template(Template::render(
             "logout_success",
             &**cfg,
         )))
     } else {
         // Otherwise, just redirect to main
-        Ok(TemplateResult::Redirect(Redirect::to("/Main")))
+        Ok(TemplateResult::Redirect(Redirect::to(
+            cfg.default_path.clone(),
+        )))
     }
 }
 

@@ -3,11 +3,7 @@
 <section class="section">
   <div class="container">
     <h1 class="title">
-      {% if main_page %}
-      Main Page
-      {% else %}
       {{ article_name }}
-      {% endif %}
     </h1>
     <hr>
     <section class="content">
@@ -15,11 +11,11 @@
       <ul>
         {% for rev in revs %}
         <li>
-          <a href="/{{ article_name }}/rev/{{ rev.0 }}">
-            #{{ rev.0 }}
+          <a href="/{{ article_name }}/rev/{{ rev.num }}">
+            #{{ rev.num }}
           </a>
-          {{ rev.1.date }} by
-          <a href="/u/{{ rev.2 }}">{{ rev.2 }}</a>
+          {{ rev.date }} by
+          <a href="/u/{{ rev.author_name }}">{{ rev.author_name }}</a>
         </li>
         {% endfor %}
       </ul>

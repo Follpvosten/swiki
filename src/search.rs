@@ -5,11 +5,12 @@ use tantivy::{
     collector::TopDocs,
     doc,
     query::QueryParser,
-    schema::{Field, Schema, INDEXED, STORED, TEXT},
+    schema::{Field, Schema, STORED, STRING, TEXT},
     IndexReader, IndexWriter, Snippet, SnippetGenerator, Term,
 };
+use uuid::Uuid;
 
-use crate::{database::articles::ArticleId, Result};
+use crate::{db::articles::ArticleWithRevision, Result};
 
 pub struct ArticleIndex {
     id_field: Field,
@@ -35,15 +36,6 @@ fn serialize_snippet<S: serde::Serializer>(
 pub enum SnippetOrFirstSentence {
     Snippet(Snippet),
     FirstSentence(String),
-}
-impl SnippetOrFirstSentence {
-    #[cfg(test)]
-    fn inner_str(&self) -> &str {
-        match self {
-            Self::Snippet(s) => s.fragments(),
-            Self::FirstSentence(s) => s.as_str(),
-        }
-    }
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -76,11 +68,9 @@ fn markdown_to_text(input: &str) -> String {
 }
 
 impl ArticleIndex {
-    pub fn new(db: &crate::Db) -> Result<ArticleIndex> {
-        use crate::database::articles::Revision;
-
+    pub async fn new(db: &crate::Db) -> Result<ArticleIndex> {
         let mut schema_builder = Schema::builder();
-        let id_field = schema_builder.add_u64_field("id", INDEXED);
+        let id_field = schema_builder.add_text_field("id", STRING);
         let name_field = schema_builder.add_text_field("name", TEXT | STORED);
         let content_field = schema_builder.add_text_field("content", TEXT | STORED);
         let date_field = schema_builder.add_date_field("last_edited", STORED);
@@ -88,24 +78,19 @@ impl ArticleIndex {
         let inner = tantivy::Index::create_in_ram(schema);
 
         let mut writer = inner.writer(50_000_000)?;
-        for article_id in db.articles.list_articles()? {
-            let article_name = db.articles.name_by_id(article_id)?;
-            let (
-                _,
-                Revision {
-                    author_id: _,
-                    content: article_content,
-                    date,
-                },
-            ) = db
-                .articles
-                .get_current_revision(article_id)?
-                .expect("Inconsistent data: article_id not found");
+        for article in db.list_articles().await? {
+            let ArticleWithRevision {
+                id,
+                name,
+                content,
+                rev_created,
+            } = article;
+            let date = DateTime::from_utc(rev_created, Utc);
             writer.add_document(doc! {
-                id_field => article_id.0 as u64,
-                name_field => article_name,
-                content_field => markdown_to_text(&article_content),
-                date_field => date
+                id_field => id.to_string(),
+                name_field => name,
+                content_field => markdown_to_text(&content),
+                date_field => date,
             });
         }
         writer.commit()?;
@@ -184,91 +169,21 @@ impl ArticleIndex {
     /// rename it, making the old rename_article method redundant.
     pub fn add_or_update_article(
         &self,
-        id: ArticleId,
+        id: Uuid,
         article_name: &str,
         content: &str,
         date: DateTime<Utc>,
     ) -> Result<()> {
-        let id = id.0 as u64;
+        let id = id.to_string();
         let mut writer = self.writer.lock();
-        writer.delete_term(Term::from_field_u64(self.id_field, id));
+        writer.delete_term(Term::from_field_text(self.id_field, &id));
         writer.add_document(doc! {
             self.id_field => id,
             self.name_field => article_name,
             self.content_field => markdown_to_text(content),
-            self.date_field => date
+            self.date_field => date,
         });
         writer.commit()?;
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-
-    use chrono::Utc;
-
-    use super::{markdown_to_text, ArticleIndex};
-    use crate::{Db, Result};
-
-    #[test]
-    fn index_from_db() -> Result<()> {
-        // Generate a mocked database with some articles.
-        let db = Db::load_or_create(sled::Config::default().temporary(true).open()?)?;
-        let author_id = db.users.register("User1", "12345")?;
-        // The articles are randomly generated and stored.
-        let mut names_to_contents: HashMap<String, String> = HashMap::with_capacity(128);
-        for _ in 0..128 {
-            // We want names to be unique
-            let name = loop {
-                let name = lipsum::lipsum_title();
-                if !names_to_contents.contains_key(&name) {
-                    break name;
-                }
-            };
-            let article_id = db.articles.create(&name)?;
-            let content = lipsum::lipsum_words(100);
-            db.articles.add_revision(article_id, author_id, &content)?;
-            names_to_contents.insert(name, markdown_to_text(&content));
-        }
-        let index = ArticleIndex::new(&db)?;
-        for (name, content) in names_to_contents {
-            let results = index.search_by_text(&name)?;
-            let specific_result = results
-                .into_iter()
-                .find(|res| res.title == name)
-                .expect("article not found with exact name");
-            assert!(
-                dbg!(content).contains(dbg!(specific_result.snippet.inner_str())),
-                "article content not right"
-            )
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn add_update_and_rename_works() -> Result<()> {
-        let empty_db = Db::load_or_create(sled::Config::default().temporary(true).open()?)?;
-        let index = ArticleIndex::new(&empty_db)?;
-        let article_id = empty_db.articles.create("blah blah")?;
-        let name = "Lorem Ipsum";
-        let text = "This is a fun short text that should be very texty.";
-        // Check if an empty db works at all
-        assert_eq!(index.search_by_text(name)?.len(), 0);
-        // Add an article
-        index.add_or_update_article(article_id, name, text, Utc::now())?;
-        // Force the indexreader to reload.
-        index.reader.reload()?;
-        // Verify we can find it
-        assert_eq!(dbg!(index.search_by_text(name)?).len(), 1);
-        // Rename the article
-        let new_name = "Baumhardt 123";
-        index.add_or_update_article(article_id, new_name, text, Utc::now())?;
-        index.reader.reload()?;
-        // Check if the old name yields no results, but the new one does
-        assert_eq!(dbg!(index.search_by_text(new_name)?).len(), 1);
-        assert_eq!(dbg!(index.search_by_text(name)?).len(), 0);
         Ok(())
     }
 }
