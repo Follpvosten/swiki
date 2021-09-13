@@ -1,5 +1,5 @@
 # s(imple )wiki
-This is a proof-of-concept minimal wiki software built in Rust in about one work week.
+This is/was a proof-of-concept minimal wiki software built in Rust in about one work week.
 Mostly intended as a playfield to try out Rocket and sled, but also with a clear
 goal and that is being fast and minimal in complexity, while offering basic wiki
 functionality (like MediaWiki, Wiki.js).
@@ -11,7 +11,8 @@ I haven't set up any badges yet, but I have near 90% code coverage at the time
 of writing this README (because whenever I was bored and had nothing else to do,
 I just went and wrote a bunch of tests).
 
-I will do a "release" once sled 1.0 hits.
+Since I've abandoned sled now and switched to postgres, I will likely want to
+at least implement categories before doing a 1.0/MVP release.
 
 ## Features ToDo
 * [x] Basic password-based registration/login system

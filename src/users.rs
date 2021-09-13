@@ -108,7 +108,6 @@ enum TemplateResult {
     Template(Template),
     #[response(status = 400)]
     Error(Template),
-    #[response(status = 303)]
     Redirect(Redirect),
 }
 
